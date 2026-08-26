@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from app.services import categorias_service, productos_service
-from app.services.exceptions import CategoriaNoEncontradaError, CodigoDuplicadoError
+from app.services.exceptions import CategoriaNoEncontradaError, CodigoDuplicadoError, ProductoNoEncontradoError
 
 
 def ProductosView(page: ft.Page) -> ft.Control:
@@ -13,6 +13,10 @@ def ProductosView(page: ft.Page) -> ft.Control:
     precio_costo_field = ft.TextField(label="Precio costo", hint_text="17,45")
     precio_venta_field = ft.TextField(label="Precio venta", hint_text="21,00")
     categoria_dropdown = ft.Dropdown(label="Categoria", options=[])
+    activo_switch = ft.Switch(label="Activo", value=True, visible=False)
+    guardar_button_texto = ft.Text("Agregar producto")
+    guardar_button = ft.ElevatedButton(content=guardar_button_texto)
+    cancelar_button = ft.TextButton("Cancelar", visible=False)
 
     tabla = ft.DataTable(
         columns=[
@@ -23,12 +27,15 @@ def ProductosView(page: ft.Page) -> ft.Control:
             ft.DataColumn(ft.Text("Costo")),
             ft.DataColumn(ft.Text("Venta")),
             ft.DataColumn(ft.Text("Stock")),
+            ft.DataColumn(ft.Text("")),
         ],
         rows=[],
     )
 
+    editando_id = None
+
     def mostrar_error(mensaje: str) -> None:
-        page.open(ft.SnackBar(ft.Text(mensaje)))
+        page.show_dialog(ft.SnackBar(ft.Text(mensaje)))
 
     def parsear_decimal(valor: str, etiqueta: str) -> Decimal:
         try:
@@ -46,6 +53,20 @@ def ProductosView(page: ft.Page) -> ft.Control:
             for c in categorias_service.listar_categorias()
         ]
 
+    def limpiar_formulario() -> None:
+        nonlocal editando_id
+        editando_id = None
+        codigo_field.value = ""
+        nombre_field.value = ""
+        unidad_field.value = ""
+        precio_costo_field.value = ""
+        precio_venta_field.value = ""
+        categoria_dropdown.value = None
+        activo_switch.visible = False
+        activo_switch.value = True
+        guardar_button_texto.value = "Agregar producto"
+        cancelar_button.visible = False
+
     def refrescar_tabla() -> None:
         tabla.rows = [
             ft.DataRow(
@@ -57,10 +78,35 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     ft.DataCell(ft.Text(str(p["precio_costo"]))),
                     ft.DataCell(ft.Text(str(p["precio_venta"]))),
                     ft.DataCell(ft.Text(str(p["stock_actual"]))),
+                    ft.DataCell(
+                        ft.IconButton(ft.Icons.EDIT, tooltip="Editar", data=p["id"], on_click=iniciar_edicion)
+                    ),
                 ]
             )
             for p in productos_service.listar_productos()
         ]
+        page.update()
+
+    def iniciar_edicion(e: ft.ControlEvent) -> None:
+        nonlocal editando_id
+        producto = productos_service.obtener_producto(e.control.data)
+        if producto is None:
+            return
+        editando_id = producto["id"]
+        codigo_field.value = producto["codigo"]
+        nombre_field.value = producto["nombre"]
+        unidad_field.value = producto["unidad"]
+        precio_costo_field.value = str(producto["precio_costo"])
+        precio_venta_field.value = str(producto["precio_venta"])
+        categoria_dropdown.value = str(producto["categoria_id"])
+        activo_switch.value = producto["activo"]
+        activo_switch.visible = True
+        guardar_button_texto.value = "Guardar cambios"
+        cancelar_button.visible = True
+        page.update()
+
+    def cancelar(e: ft.ControlEvent) -> None:
+        limpiar_formulario()
         page.update()
 
     def guardar(e: ft.ControlEvent) -> None:
@@ -68,22 +114,40 @@ def ProductosView(page: ft.Page) -> ft.Control:
             if not categoria_dropdown.value:
                 raise ValueError("Elegi una categoria")
 
-            productos_service.crear_producto(
-                codigo=codigo_field.value or "",
-                nombre=nombre_field.value or "",
-                categoria_id=int(categoria_dropdown.value),
-                unidad=unidad_field.value or "",
-                precio_costo=parsear_decimal(precio_costo_field.value, "Precio costo"),
-                precio_venta=parsear_decimal(precio_venta_field.value, "Precio venta"),
-            )
-            codigo_field.value = ""
-            nombre_field.value = ""
-            unidad_field.value = ""
-            precio_costo_field.value = ""
-            precio_venta_field.value = ""
+            categoria_id = int(categoria_dropdown.value)
+            codigo = codigo_field.value or ""
+            nombre = nombre_field.value or ""
+            unidad = unidad_field.value or ""
+            precio_costo = parsear_decimal(precio_costo_field.value, "Precio costo")
+            precio_venta = parsear_decimal(precio_venta_field.value, "Precio venta")
+
+            if editando_id is None:
+                productos_service.crear_producto(
+                    codigo=codigo,
+                    nombre=nombre,
+                    categoria_id=categoria_id,
+                    unidad=unidad,
+                    precio_costo=precio_costo,
+                    precio_venta=precio_venta,
+                )
+            else:
+                productos_service.actualizar_producto(
+                    producto_id=editando_id,
+                    codigo=codigo,
+                    nombre=nombre,
+                    categoria_id=categoria_id,
+                    unidad=unidad,
+                    precio_costo=precio_costo,
+                    precio_venta=precio_venta,
+                    activo=activo_switch.value,
+                )
+            limpiar_formulario()
             refrescar_tabla()
-        except (CodigoDuplicadoError, CategoriaNoEncontradaError, ValueError) as ex:
+        except (CodigoDuplicadoError, CategoriaNoEncontradaError, ProductoNoEncontradoError, ValueError) as ex:
             mostrar_error(str(ex))
+
+    guardar_button.on_click = guardar
+    cancelar_button.on_click = cancelar
 
     refrescar_categorias()
     refrescar_tabla()
@@ -92,8 +156,8 @@ def ProductosView(page: ft.Page) -> ft.Control:
         [
             ft.Text("Productos", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([codigo_field, nombre_field, unidad_field]),
-            ft.Row([categoria_dropdown, precio_costo_field, precio_venta_field]),
-            ft.ElevatedButton("Agregar producto", on_click=guardar),
+            ft.Row([categoria_dropdown, precio_costo_field, precio_venta_field, activo_switch]),
+            ft.Row([guardar_button, cancelar_button]),
             tabla,
         ],
         expand=True,

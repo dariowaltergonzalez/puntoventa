@@ -36,7 +36,7 @@ def MovimientosView(page: ft.Page) -> ft.Control:
     )
 
     def mostrar_error(mensaje: str) -> None:
-        page.open(ft.SnackBar(ft.Text(mensaje)))
+        page.show_dialog(ft.SnackBar(ft.Text(mensaje)))
 
     def nombre_producto(producto_id: int) -> str:
         producto = productos_service.obtener_producto(producto_id)
