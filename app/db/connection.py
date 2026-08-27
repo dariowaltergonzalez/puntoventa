@@ -44,6 +44,20 @@ def _migrar(conn: sqlite3.Connection) -> None:
         """
     )
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS log_eventos (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha         TEXT NOT NULL,
+            entidad       TEXT NOT NULL,
+            entidad_id    INTEGER,
+            descripcion   TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_log_eventos_fecha ON log_eventos (fecha)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_log_eventos_entidad ON log_eventos (entidad, entidad_id)")
+
     columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(productos)")}
     if "stock_minimo" not in columnas:
         conn.execute("ALTER TABLE productos ADD COLUMN stock_minimo INTEGER NOT NULL DEFAULT 0")

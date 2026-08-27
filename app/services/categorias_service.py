@@ -1,6 +1,7 @@
 import sqlite3
 
 from app.repositories import categorias_repo
+from app.services import log_service
 from app.services.exceptions import CategoriaDuplicadaError, CategoriaNoEncontradaError
 
 
@@ -18,6 +19,7 @@ def crear_categoria(nombre: str) -> dict:
     except sqlite3.IntegrityError as exc:
         raise CategoriaDuplicadaError(f"Ya existe una categoria llamada '{nombre}'") from exc
 
+    log_service.registrar("categoria", categoria_id, f"Se creo la categoria '{nombre}'")
     return obtener_categoria(categoria_id)
 
 
@@ -26,13 +28,16 @@ def actualizar_categoria(categoria_id: int, nombre: str) -> dict:
     if not nombre:
         raise ValueError("El nombre de la categoria no puede estar vacio")
 
-    if categorias_repo.obtener_por_id(categoria_id) is None:
+    antes = obtener_categoria(categoria_id)
+    if antes is None:
         raise CategoriaNoEncontradaError(f"No existe la categoria {categoria_id}")
 
     try:
         categorias_repo.actualizar(categoria_id, nombre)
     except sqlite3.IntegrityError as exc:
         raise CategoriaDuplicadaError(f"Ya existe una categoria llamada '{nombre}'") from exc
+
+    log_service.registrar_cambios("categoria", categoria_id, antes, {"nombre": nombre}, ["nombre"])
 
     return obtener_categoria(categoria_id)
 

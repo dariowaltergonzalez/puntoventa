@@ -1,7 +1,8 @@
 import sqlite3
 from decimal import Decimal
 
-from app.repositories import categorias_repo, productos_repo
+from app.repositories import categorias_repo, productos_repo, proveedores_repo
+from app.services import log_service
 from app.services.exceptions import (
     CategoriaNoEncontradaError,
     CodigoBarraDuplicadoError,
@@ -9,6 +10,11 @@ from app.services.exceptions import (
     ProductoNoEncontradoError,
 )
 from app.shared.money import cantidad_a_entero, entero_a_cantidad, entero_a_precio, precio_a_entero
+
+_CAMPOS_LOG = [
+    "codigo", "nombre", "categoria", "unidad", "precio_costo", "precio_venta",
+    "stock_minimo", "marca", "descripcion", "codigo_barra", "proveedor", "activo",
+]
 
 
 def _a_dict(fila: sqlite3.Row) -> dict:
@@ -28,6 +34,17 @@ def _a_dict(fila: sqlite3.Row) -> dict:
         "codigo_barra": fila["codigo_barra"],
         "proveedor_id": fila["proveedor_id"],
     }
+
+
+def _vista_log(producto: dict) -> dict:
+    """Version del producto con categoria_id/proveedor_id resueltos a nombre, para que el log
+    interno sea legible ('de ninguno a Jorgito') en vez de mostrar ids crudos."""
+    categoria = categorias_repo.obtener_por_id(producto["categoria_id"])
+    proveedor = proveedores_repo.obtener_por_id(producto["proveedor_id"]) if producto["proveedor_id"] else None
+    vista = dict(producto)
+    vista["categoria"] = categoria["nombre"] if categoria else producto["categoria_id"]
+    vista["proveedor"] = proveedor["nombre"] if proveedor else None
+    return vista
 
 
 def _texto_o_none(valor: str | None) -> str | None:
@@ -90,6 +107,7 @@ def crear_producto(
     except sqlite3.IntegrityError as exc:
         raise _traducir_integrity_error(exc, codigo, codigo_barra) from exc
 
+    log_service.registrar("producto", producto_id, f"Se creo el producto '{codigo} - {nombre.strip()}'")
     return obtener_producto(producto_id)
 
 
@@ -112,7 +130,8 @@ def actualizar_producto(
     codigo_barra = _texto_o_none(codigo_barra)
     _validar_datos(codigo, categoria_id, precio_costo, precio_venta, stock_minimo)
 
-    if productos_repo.obtener_por_id(producto_id) is None:
+    antes = obtener_producto(producto_id)
+    if antes is None:
         raise ProductoNoEncontradoError(f"No existe el producto {producto_id}")
 
     try:
@@ -134,7 +153,9 @@ def actualizar_producto(
     except sqlite3.IntegrityError as exc:
         raise _traducir_integrity_error(exc, codigo, codigo_barra) from exc
 
-    return obtener_producto(producto_id)
+    despues = obtener_producto(producto_id)
+    log_service.registrar_cambios("producto", producto_id, _vista_log(antes), _vista_log(despues), _CAMPOS_LOG)
+    return despues
 
 
 def obtener_producto(producto_id: int) -> dict | None:

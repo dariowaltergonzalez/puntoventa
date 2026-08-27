@@ -2,6 +2,7 @@ import sqlite3
 from decimal import Decimal
 
 from app.repositories import movimientos_repo, productos_repo
+from app.services import log_service
 from app.services.exceptions import ProductoInactivoError, ProductoNoEncontradoError, StockInsuficienteError
 from app.shared.money import cantidad_a_entero, entero_a_cantidad
 
@@ -35,7 +36,7 @@ def registrar_ingreso(
     referencia: str | None = None,
     observacion: str | None = None,
 ) -> dict:
-    _obtener_producto_o_falla(producto_id)
+    producto = _obtener_producto_o_falla(producto_id)
     if cantidad <= 0:
         raise ValueError("La cantidad debe ser mayor a cero")
 
@@ -46,6 +47,10 @@ def registrar_ingreso(
         motivo=motivo,
         referencia=referencia,
         observacion=observacion,
+    )
+    log_service.registrar(
+        "producto", producto_id,
+        f"Se registro un ingreso de {cantidad} {producto['unidad']} en '{producto['nombre']}' (motivo: {motivo})",
     )
     return _obtener_movimiento(movimiento_id)
 
@@ -74,6 +79,10 @@ def registrar_egreso(
         motivo=motivo,
         referencia=referencia,
         observacion=observacion,
+    )
+    log_service.registrar(
+        "producto", producto_id,
+        f"Se registro un egreso de {cantidad} {producto['unidad']} en '{producto['nombre']}' (motivo: {motivo})",
     )
     return _obtener_movimiento(movimiento_id)
 
@@ -133,12 +142,18 @@ def recalcular_stock() -> list[dict]:
     for producto_id, stock_recalculado in resultado.items():
         stock_anterior = productos_antes.get(producto_id, 0)
         if stock_anterior != stock_recalculado:
+            anterior = entero_a_cantidad(stock_anterior)
+            recalculado = entero_a_cantidad(stock_recalculado)
             diferencias.append(
                 {
                     "producto_id": producto_id,
-                    "stock_anterior": entero_a_cantidad(stock_anterior),
-                    "stock_recalculado": entero_a_cantidad(stock_recalculado),
+                    "stock_anterior": anterior,
+                    "stock_recalculado": recalculado,
                     "diferencia": entero_a_cantidad(stock_recalculado - stock_anterior),
                 }
+            )
+            log_service.registrar(
+                "producto", producto_id,
+                f"Recalculo de stock corrigio el valor de {anterior} a {recalculado}",
             )
     return diferencias

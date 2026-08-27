@@ -1,6 +1,7 @@
 import flet as ft
 
 from app.ui.categorias_view import CategoriasView
+from app.ui.log_view import LogView
 from app.ui.movimientos_view import MovimientosView
 from app.ui.productos_view import ProductosView
 from app.ui.proveedores_view import ProveedoresView
@@ -16,6 +17,7 @@ def build_app(page: ft.Page) -> None:
         lambda: ProveedoresView(page),
         lambda: MovimientosView(page),
         lambda: StockView(page),
+        lambda: LogView(page),
     ]
 
     def cambiar_vista(indice: int) -> None:
@@ -31,6 +33,7 @@ def build_app(page: ft.Page) -> None:
             ft.NavigationRailDestination(icon=ft.Icons.LOCAL_SHIPPING, label="Proveedores"),
             ft.NavigationRailDestination(icon=ft.Icons.SWAP_VERT, label="Movimientos"),
             ft.NavigationRailDestination(icon=ft.Icons.BAR_CHART, label="Stock"),
+            ft.NavigationRailDestination(icon=ft.Icons.HISTORY, label="Historial"),
         ],
         on_change=lambda e: cambiar_vista(e.control.selected_index),
     )

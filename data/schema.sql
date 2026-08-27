@@ -62,7 +62,17 @@ CREATE TABLE IF NOT EXISTS movimientos (
     CHECK (cantidad > 0)
 );
 
+CREATE TABLE IF NOT EXISTS log_eventos (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha         TEXT NOT NULL,                 -- ISO 8601, generada por el sistema
+    entidad       TEXT NOT NULL,                 -- 'categoria' | 'producto' | 'proveedor' | 'movimiento' | 'sistema'
+    entidad_id    INTEGER,                       -- nullable: acciones de sistema sin registro asociado
+    descripcion   TEXT NOT NULL                  -- mensaje legible ya armado por quien loguea
+);
+
 CREATE INDEX IF NOT EXISTS idx_movimientos_producto_id ON movimientos (producto_id);
 CREATE INDEX IF NOT EXISTS idx_movimientos_fecha ON movimientos (fecha);
 CREATE INDEX IF NOT EXISTS idx_movimientos_producto_fecha ON movimientos (producto_id, fecha);
 CREATE INDEX IF NOT EXISTS idx_productos_categoria_id ON productos (categoria_id);
+CREATE INDEX IF NOT EXISTS idx_log_eventos_fecha ON log_eventos (fecha);
+CREATE INDEX IF NOT EXISTS idx_log_eventos_entidad ON log_eventos (entidad, entidad_id);

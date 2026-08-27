@@ -1,7 +1,10 @@
 import sqlite3
 
 from app.repositories import proveedores_repo
+from app.services import log_service
 from app.services.exceptions import ProveedorDuplicadoError, ProveedorNoEncontradoError
+
+_CAMPOS_LOG = ["nombre", "cuit", "contacto", "telefono", "email", "direccion", "observaciones", "activo"]
 
 
 def _a_dict(fila: sqlite3.Row) -> dict:
@@ -49,6 +52,7 @@ def crear_proveedor(
     except sqlite3.IntegrityError as exc:
         raise ProveedorDuplicadoError(f"Ya existe un proveedor llamado '{nombre}'") from exc
 
+    log_service.registrar("proveedor", proveedor_id, f"Se creo el proveedor '{nombre}'")
     return obtener_proveedor(proveedor_id)
 
 
@@ -67,7 +71,8 @@ def actualizar_proveedor(
     if not nombre:
         raise ValueError("El nombre del proveedor no puede estar vacio")
 
-    if proveedores_repo.obtener_por_id(proveedor_id) is None:
+    antes = obtener_proveedor(proveedor_id)
+    if antes is None:
         raise ProveedorNoEncontradoError(f"No existe el proveedor {proveedor_id}")
 
     try:
@@ -85,7 +90,9 @@ def actualizar_proveedor(
     except sqlite3.IntegrityError as exc:
         raise ProveedorDuplicadoError(f"Ya existe un proveedor llamado '{nombre}'") from exc
 
-    return obtener_proveedor(proveedor_id)
+    despues = obtener_proveedor(proveedor_id)
+    log_service.registrar_cambios("proveedor", proveedor_id, antes, despues, _CAMPOS_LOG)
+    return despues
 
 
 def obtener_proveedor(proveedor_id: int) -> dict | None:
