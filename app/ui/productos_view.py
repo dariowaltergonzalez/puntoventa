@@ -2,7 +2,7 @@ from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
-from app.services import categorias_service, productos_service
+from app.services import categorias_service, productos_service, proveedores_service
 from app.services.exceptions import (
     CategoriaNoEncontradaError,
     CodigoBarraDuplicadoError,
@@ -23,6 +23,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
     descripcion_field = ft.TextField(label="Descripcion (opcional)", multiline=True, min_lines=1, max_lines=3)
     codigo_barra_field = ft.TextField(label="Codigo de barras (opcional)")
     categoria_dropdown = ft.Dropdown(label="Categoria", options=[])
+    proveedor_dropdown = ft.Dropdown(label="Proveedor (opcional)", options=[], value="")
     activo_switch = ft.Switch(label="Activo", value=True, visible=False)
     guardar_button_texto = ft.Text("Agregar producto")
     guardar_button = ft.ElevatedButton(content=guardar_button_texto)
@@ -36,6 +37,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
             ft.DataColumn(ft.Text("Marca")),
             ft.DataColumn(ft.Text("Cod. barras")),
             ft.DataColumn(ft.Text("Categoria")),
+            ft.DataColumn(ft.Text("Proveedor")),
             ft.DataColumn(ft.Text("Unidad")),
             ft.DataColumn(ft.Text("Costo ($)")),
             ft.DataColumn(ft.Text("Venta ($)")),
@@ -61,10 +63,22 @@ def ProductosView(page: ft.Page) -> ft.Control:
         categoria = categorias_service.obtener_categoria(categoria_id)
         return categoria["nombre"] if categoria else "?"
 
+    def nombre_proveedor(proveedor_id: int | None) -> str:
+        if proveedor_id is None:
+            return "-"
+        proveedor = proveedores_service.obtener_proveedor(proveedor_id)
+        return proveedor["nombre"] if proveedor else "?"
+
     def refrescar_categorias() -> None:
         categoria_dropdown.options = [
             ft.dropdown.Option(key=str(c["id"]), text=c["nombre"])
             for c in categorias_service.listar_categorias()
+        ]
+
+    def refrescar_proveedores() -> None:
+        proveedor_dropdown.options = [ft.dropdown.Option(key="", text="Sin proveedor")] + [
+            ft.dropdown.Option(key=str(p["id"]), text=p["nombre"])
+            for p in proveedores_service.listar_proveedores(solo_activos=True)
         ]
 
     def limpiar_formulario() -> None:
@@ -80,6 +94,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
         descripcion_field.value = ""
         codigo_barra_field.value = ""
         categoria_dropdown.value = None
+        proveedor_dropdown.value = ""
         activo_switch.visible = False
         activo_switch.value = True
         guardar_button_texto.value = "Agregar producto"
@@ -107,6 +122,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     ft.DataCell(ft.Text(p["marca"] or "-")),
                     ft.DataCell(ft.Text(p["codigo_barra"] or "-")),
                     ft.DataCell(ft.Text(nombre_categoria(p["categoria_id"]))),
+                    ft.DataCell(ft.Text(nombre_proveedor(p["proveedor_id"]))),
                     ft.DataCell(ft.Text(p["unidad"])),
                     ft.DataCell(ft.Text(formatear_precio(p["precio_costo"]))),
                     ft.DataCell(ft.Text(formatear_precio(p["precio_venta"]))),
@@ -137,6 +153,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
         descripcion_field.value = producto["descripcion"] or ""
         codigo_barra_field.value = producto["codigo_barra"] or ""
         categoria_dropdown.value = str(producto["categoria_id"])
+        proveedor_dropdown.value = str(producto["proveedor_id"]) if producto["proveedor_id"] else ""
         activo_switch.value = producto["activo"]
         activo_switch.visible = True
         guardar_button_texto.value = "Guardar cambios"
@@ -162,6 +179,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
             precio_costo = parsear_decimal(precio_costo_field.value, "Precio costo")
             precio_venta = parsear_decimal(precio_venta_field.value, "Precio venta")
             stock_minimo = parsear_decimal(stock_minimo_field.value, "Stock minimo")
+            proveedor_id = int(proveedor_dropdown.value) if proveedor_dropdown.value else None
 
             if editando_id is None:
                 productos_service.crear_producto(
@@ -175,6 +193,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     marca=marca_field.value,
                     descripcion=descripcion_field.value,
                     codigo_barra=codigo_barra_field.value,
+                    proveedor_id=proveedor_id,
                 )
             else:
                 productos_service.actualizar_producto(
@@ -190,6 +209,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     marca=marca_field.value,
                     descripcion=descripcion_field.value,
                     codigo_barra=codigo_barra_field.value,
+                    proveedor_id=proveedor_id,
                 )
             limpiar_formulario()
             refrescar_tabla()
@@ -207,6 +227,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
     buscador_field.on_change = buscar
 
     refrescar_categorias()
+    refrescar_proveedores()
     refrescar_tabla()
 
     return ft.Column(
@@ -214,7 +235,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
             ft.Text("Productos", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([codigo_field, nombre_field, unidad_field]),
             ft.Row([categoria_dropdown, precio_costo_field, precio_venta_field, stock_minimo_field, activo_switch]),
-            ft.Row([marca_field, codigo_barra_field]),
+            ft.Row([marca_field, codigo_barra_field, proveedor_dropdown]),
             ft.Row([descripcion_field]),
             ft.Row([guardar_button, cancelar_button]),
             ft.Row([buscador_field]),

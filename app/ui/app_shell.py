@@ -3,6 +3,7 @@ import flet as ft
 from app.ui.categorias_view import CategoriasView
 from app.ui.movimientos_view import MovimientosView
 from app.ui.productos_view import ProductosView
+from app.ui.proveedores_view import ProveedoresView
 from app.ui.stock_view import StockView
 
 
@@ -12,6 +13,7 @@ def build_app(page: ft.Page) -> None:
     vistas = [
         lambda: CategoriasView(page),
         lambda: ProductosView(page),
+        lambda: ProveedoresView(page),
         lambda: MovimientosView(page),
         lambda: StockView(page),
     ]
@@ -26,6 +28,7 @@ def build_app(page: ft.Page) -> None:
         destinations=[
             ft.NavigationRailDestination(icon=ft.Icons.CATEGORY, label="Categorias"),
             ft.NavigationRailDestination(icon=ft.Icons.INVENTORY_2, label="Productos"),
+            ft.NavigationRailDestination(icon=ft.Icons.LOCAL_SHIPPING, label="Proveedores"),
             ft.NavigationRailDestination(icon=ft.Icons.SWAP_VERT, label="Movimientos"),
             ft.NavigationRailDestination(icon=ft.Icons.BAR_CHART, label="Stock"),
         ],

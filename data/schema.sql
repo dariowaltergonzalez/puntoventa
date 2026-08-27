@@ -6,6 +6,19 @@ CREATE TABLE IF NOT EXISTS categorias (
     nombre  TEXT NOT NULL UNIQUE
 );
 
+CREATE TABLE IF NOT EXISTS proveedores (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre         TEXT NOT NULL UNIQUE,
+    cuit           TEXT,
+    contacto       TEXT,
+    telefono       TEXT,
+    email          TEXT,
+    direccion      TEXT,
+    observaciones  TEXT,
+    activo         INTEGER NOT NULL DEFAULT 1,
+    CHECK (activo IN (0, 1))
+);
+
 CREATE TABLE IF NOT EXISTS productos (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     codigo         TEXT NOT NULL UNIQUE,
@@ -20,9 +33,12 @@ CREATE TABLE IF NOT EXISTS productos (
     marca          TEXT,
     descripcion    TEXT,
     codigo_barra   TEXT UNIQUE,                  -- nullable: productos sueltos pueden no tener
-    proveedor_id   INTEGER,                      -- nullable, sin FK todavia (no existe tabla proveedores aun)
+    proveedor_id   INTEGER,                      -- nullable: producto puede no tener proveedor cargado
     FOREIGN KEY (categoria_id) REFERENCES categorias (id)
         ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (proveedor_id) REFERENCES proveedores (id)
+        ON DELETE SET NULL
         ON UPDATE CASCADE,
     CHECK (activo IN (0, 1)),
     CHECK (precio_costo >= 0),

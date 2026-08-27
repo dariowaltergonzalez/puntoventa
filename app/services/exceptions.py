@@ -24,3 +24,11 @@ class ProductoInactivoError(Exception):
 
 class StockInsuficienteError(Exception):
     pass
+
+
+class ProveedorDuplicadoError(Exception):
+    pass
+
+
+class ProveedorNoEncontradoError(Exception):
+    pass

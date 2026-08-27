@@ -27,6 +27,23 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
 def _migrar(conn: sqlite3.Connection) -> None:
     """Migraciones aditivas simples para bases creadas con una version anterior del schema."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS proveedores (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre         TEXT NOT NULL UNIQUE,
+            cuit           TEXT,
+            contacto       TEXT,
+            telefono       TEXT,
+            email          TEXT,
+            direccion      TEXT,
+            observaciones  TEXT,
+            activo         INTEGER NOT NULL DEFAULT 1,
+            CHECK (activo IN (0, 1))
+        )
+        """
+    )
+
     columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(productos)")}
     if "stock_minimo" not in columnas:
         conn.execute("ALTER TABLE productos ADD COLUMN stock_minimo INTEGER NOT NULL DEFAULT 0")
