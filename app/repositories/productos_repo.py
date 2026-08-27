@@ -12,16 +12,24 @@ def crear(
     precio_venta: int,
     stock_minimo: int = 0,
     activo: int = 1,
+    marca: str | None = None,
+    descripcion: str | None = None,
+    codigo_barra: str | None = None,
+    proveedor_id: int | None = None,
 ) -> int:
     conn = get_connection()
     try:
         cursor = conn.execute(
             """
             INSERT INTO productos
-                (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, stock_actual, stock_minimo)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, stock_actual,
+                 stock_minimo, marca, descripcion, codigo_barra, proveedor_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
             """,
-            (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, stock_minimo),
+            (
+                codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo,
+                stock_minimo, marca, descripcion, codigo_barra, proveedor_id,
+            ),
         )
         conn.commit()
         return cursor.lastrowid
@@ -39,6 +47,10 @@ def actualizar(
     precio_venta: int,
     stock_minimo: int,
     activo: int,
+    marca: str | None = None,
+    descripcion: str | None = None,
+    codigo_barra: str | None = None,
+    proveedor_id: int | None = None,
 ) -> None:
     conn = get_connection()
     try:
@@ -46,10 +58,14 @@ def actualizar(
             """
             UPDATE productos
             SET codigo = ?, nombre = ?, categoria_id = ?, unidad = ?,
-                precio_costo = ?, precio_venta = ?, activo = ?, stock_minimo = ?
+                precio_costo = ?, precio_venta = ?, activo = ?, stock_minimo = ?,
+                marca = ?, descripcion = ?, codigo_barra = ?, proveedor_id = ?
             WHERE id = ?
             """,
-            (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, stock_minimo, producto_id),
+            (
+                codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, stock_minimo,
+                marca, descripcion, codigo_barra, proveedor_id, producto_id,
+            ),
         )
         conn.commit()
     finally:

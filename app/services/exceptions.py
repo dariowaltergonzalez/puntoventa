@@ -10,6 +10,10 @@ class CodigoDuplicadoError(Exception):
     pass
 
 
+class CodigoBarraDuplicadoError(Exception):
+    pass
+
+
 class ProductoNoEncontradoError(Exception):
     pass
 

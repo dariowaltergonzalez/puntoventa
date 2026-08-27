@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS productos (
     activo         INTEGER NOT NULL DEFAULT 1,
     stock_actual   INTEGER NOT NULL DEFAULT 0,   -- escalado x1000 (3 decimales)
     stock_minimo   INTEGER NOT NULL DEFAULT 0,   -- escalado x1000 (3 decimales); 0 = sin umbral
+    marca          TEXT,
+    descripcion    TEXT,
+    codigo_barra   TEXT UNIQUE,                  -- nullable: productos sueltos pueden no tener
+    proveedor_id   INTEGER,                      -- nullable, sin FK todavia (no existe tabla proveedores aun)
     FOREIGN KEY (categoria_id) REFERENCES categorias (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,

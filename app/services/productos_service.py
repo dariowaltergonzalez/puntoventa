@@ -2,7 +2,12 @@ import sqlite3
 from decimal import Decimal
 
 from app.repositories import categorias_repo, productos_repo
-from app.services.exceptions import CategoriaNoEncontradaError, CodigoDuplicadoError, ProductoNoEncontradoError
+from app.services.exceptions import (
+    CategoriaNoEncontradaError,
+    CodigoBarraDuplicadoError,
+    CodigoDuplicadoError,
+    ProductoNoEncontradoError,
+)
 from app.shared.money import cantidad_a_entero, entero_a_cantidad, entero_a_precio, precio_a_entero
 
 
@@ -18,7 +23,16 @@ def _a_dict(fila: sqlite3.Row) -> dict:
         "activo": bool(fila["activo"]),
         "stock_actual": entero_a_cantidad(fila["stock_actual"]),
         "stock_minimo": entero_a_cantidad(fila["stock_minimo"]),
+        "marca": fila["marca"],
+        "descripcion": fila["descripcion"],
+        "codigo_barra": fila["codigo_barra"],
+        "proveedor_id": fila["proveedor_id"],
     }
+
+
+def _texto_o_none(valor: str | None) -> str | None:
+    valor = (valor or "").strip()
+    return valor or None
 
 
 def _validar_datos(
@@ -34,6 +48,12 @@ def _validar_datos(
         raise ValueError("El stock minimo no puede ser negativo")
 
 
+def _traducir_integrity_error(exc: sqlite3.IntegrityError, codigo: str, codigo_barra: str | None) -> Exception:
+    if "codigo_barra" in str(exc):
+        return CodigoBarraDuplicadoError(f"Ya existe un producto con el codigo de barras '{codigo_barra}'")
+    return CodigoDuplicadoError(f"Ya existe un producto con el codigo '{codigo}'")
+
+
 def crear_producto(
     codigo: str,
     nombre: str,
@@ -43,8 +63,13 @@ def crear_producto(
     precio_venta: Decimal,
     stock_minimo: Decimal = Decimal("0"),
     activo: bool = True,
+    marca: str | None = None,
+    descripcion: str | None = None,
+    codigo_barra: str | None = None,
+    proveedor_id: int | None = None,
 ) -> dict:
     codigo = codigo.strip()
+    codigo_barra = _texto_o_none(codigo_barra)
     _validar_datos(codigo, categoria_id, precio_costo, precio_venta, stock_minimo)
 
     try:
@@ -57,9 +82,13 @@ def crear_producto(
             precio_venta=precio_a_entero(precio_venta),
             stock_minimo=cantidad_a_entero(stock_minimo),
             activo=1 if activo else 0,
+            marca=_texto_o_none(marca),
+            descripcion=_texto_o_none(descripcion),
+            codigo_barra=codigo_barra,
+            proveedor_id=proveedor_id,
         )
     except sqlite3.IntegrityError as exc:
-        raise CodigoDuplicadoError(f"Ya existe un producto con el codigo '{codigo}'") from exc
+        raise _traducir_integrity_error(exc, codigo, codigo_barra) from exc
 
     return obtener_producto(producto_id)
 
@@ -74,8 +103,13 @@ def actualizar_producto(
     precio_venta: Decimal,
     stock_minimo: Decimal,
     activo: bool,
+    marca: str | None = None,
+    descripcion: str | None = None,
+    codigo_barra: str | None = None,
+    proveedor_id: int | None = None,
 ) -> dict:
     codigo = codigo.strip()
+    codigo_barra = _texto_o_none(codigo_barra)
     _validar_datos(codigo, categoria_id, precio_costo, precio_venta, stock_minimo)
 
     if productos_repo.obtener_por_id(producto_id) is None:
@@ -92,9 +126,13 @@ def actualizar_producto(
             precio_venta=precio_a_entero(precio_venta),
             stock_minimo=cantidad_a_entero(stock_minimo),
             activo=1 if activo else 0,
+            marca=_texto_o_none(marca),
+            descripcion=_texto_o_none(descripcion),
+            codigo_barra=codigo_barra,
+            proveedor_id=proveedor_id,
         )
     except sqlite3.IntegrityError as exc:
-        raise CodigoDuplicadoError(f"Ya existe un producto con el codigo '{codigo}'") from exc
+        raise _traducir_integrity_error(exc, codigo, codigo_barra) from exc
 
     return obtener_producto(producto_id)
 

@@ -3,7 +3,12 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from app.services import categorias_service, productos_service
-from app.services.exceptions import CategoriaNoEncontradaError, CodigoDuplicadoError, ProductoNoEncontradoError
+from app.services.exceptions import (
+    CategoriaNoEncontradaError,
+    CodigoBarraDuplicadoError,
+    CodigoDuplicadoError,
+    ProductoNoEncontradoError,
+)
 from app.shared.money import formatear_cantidad, formatear_precio
 
 
@@ -14,6 +19,9 @@ def ProductosView(page: ft.Page) -> ft.Control:
     precio_costo_field = ft.TextField(label="Precio costo", hint_text="17,45")
     precio_venta_field = ft.TextField(label="Precio venta", hint_text="21,00")
     stock_minimo_field = ft.TextField(label="Stock minimo", hint_text="5,000")
+    marca_field = ft.TextField(label="Marca (opcional)")
+    descripcion_field = ft.TextField(label="Descripcion (opcional)", multiline=True, min_lines=1, max_lines=3)
+    codigo_barra_field = ft.TextField(label="Codigo de barras (opcional)")
     categoria_dropdown = ft.Dropdown(label="Categoria", options=[])
     activo_switch = ft.Switch(label="Activo", value=True, visible=False)
     guardar_button_texto = ft.Text("Agregar producto")
@@ -25,6 +33,8 @@ def ProductosView(page: ft.Page) -> ft.Control:
         columns=[
             ft.DataColumn(ft.Text("Codigo")),
             ft.DataColumn(ft.Text("Nombre")),
+            ft.DataColumn(ft.Text("Marca")),
+            ft.DataColumn(ft.Text("Cod. barras")),
             ft.DataColumn(ft.Text("Categoria")),
             ft.DataColumn(ft.Text("Unidad")),
             ft.DataColumn(ft.Text("Costo ($)")),
@@ -66,6 +76,9 @@ def ProductosView(page: ft.Page) -> ft.Control:
         precio_costo_field.value = ""
         precio_venta_field.value = ""
         stock_minimo_field.value = ""
+        marca_field.value = ""
+        descripcion_field.value = ""
+        codigo_barra_field.value = ""
         categoria_dropdown.value = None
         activo_switch.visible = False
         activo_switch.value = True
@@ -76,7 +89,11 @@ def ProductosView(page: ft.Page) -> ft.Control:
         texto = texto.strip().lower()
         if not texto:
             return True
-        return texto in producto["nombre"].lower() or texto in producto["codigo"].lower()
+        if texto in producto["nombre"].lower() or texto in producto["codigo"].lower():
+            return True
+        if producto["codigo_barra"] and texto in producto["codigo_barra"].lower():
+            return True
+        return False
 
     def refrescar_tabla() -> None:
         productos = [
@@ -87,6 +104,8 @@ def ProductosView(page: ft.Page) -> ft.Control:
                 cells=[
                     ft.DataCell(ft.Text(p["codigo"])),
                     ft.DataCell(ft.Text(p["nombre"])),
+                    ft.DataCell(ft.Text(p["marca"] or "-")),
+                    ft.DataCell(ft.Text(p["codigo_barra"] or "-")),
                     ft.DataCell(ft.Text(nombre_categoria(p["categoria_id"]))),
                     ft.DataCell(ft.Text(p["unidad"])),
                     ft.DataCell(ft.Text(formatear_precio(p["precio_costo"]))),
@@ -114,6 +133,9 @@ def ProductosView(page: ft.Page) -> ft.Control:
         precio_costo_field.value = str(producto["precio_costo"])
         precio_venta_field.value = str(producto["precio_venta"])
         stock_minimo_field.value = str(producto["stock_minimo"])
+        marca_field.value = producto["marca"] or ""
+        descripcion_field.value = producto["descripcion"] or ""
+        codigo_barra_field.value = producto["codigo_barra"] or ""
         categoria_dropdown.value = str(producto["categoria_id"])
         activo_switch.value = producto["activo"]
         activo_switch.visible = True
@@ -150,6 +172,9 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     precio_costo=precio_costo,
                     precio_venta=precio_venta,
                     stock_minimo=stock_minimo,
+                    marca=marca_field.value,
+                    descripcion=descripcion_field.value,
+                    codigo_barra=codigo_barra_field.value,
                 )
             else:
                 productos_service.actualizar_producto(
@@ -162,10 +187,19 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     precio_venta=precio_venta,
                     stock_minimo=stock_minimo,
                     activo=activo_switch.value,
+                    marca=marca_field.value,
+                    descripcion=descripcion_field.value,
+                    codigo_barra=codigo_barra_field.value,
                 )
             limpiar_formulario()
             refrescar_tabla()
-        except (CodigoDuplicadoError, CategoriaNoEncontradaError, ProductoNoEncontradoError, ValueError) as ex:
+        except (
+            CodigoDuplicadoError,
+            CodigoBarraDuplicadoError,
+            CategoriaNoEncontradaError,
+            ProductoNoEncontradoError,
+            ValueError,
+        ) as ex:
             mostrar_error(str(ex))
 
     guardar_button.on_click = guardar
@@ -180,6 +214,8 @@ def ProductosView(page: ft.Page) -> ft.Control:
             ft.Text("Productos", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([codigo_field, nombre_field, unidad_field]),
             ft.Row([categoria_dropdown, precio_costo_field, precio_venta_field, stock_minimo_field, activo_switch]),
+            ft.Row([marca_field, codigo_barra_field]),
+            ft.Row([descripcion_field]),
             ft.Row([guardar_button, cancelar_button]),
             ft.Row([buscador_field]),
             tabla,
