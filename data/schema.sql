@@ -16,12 +16,14 @@ CREATE TABLE IF NOT EXISTS productos (
     precio_venta   INTEGER NOT NULL DEFAULT 0,   -- escalado x100 (2 decimales)
     activo         INTEGER NOT NULL DEFAULT 1,
     stock_actual   INTEGER NOT NULL DEFAULT 0,   -- escalado x1000 (3 decimales)
+    stock_minimo   INTEGER NOT NULL DEFAULT 0,   -- escalado x1000 (3 decimales); 0 = sin umbral
     FOREIGN KEY (categoria_id) REFERENCES categorias (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
     CHECK (activo IN (0, 1)),
     CHECK (precio_costo >= 0),
-    CHECK (precio_venta >= 0)
+    CHECK (precio_venta >= 0),
+    CHECK (stock_minimo >= 0)
 );
 
 CREATE TABLE IF NOT EXISTS movimientos (

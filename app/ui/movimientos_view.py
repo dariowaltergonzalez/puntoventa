@@ -4,6 +4,7 @@ import flet as ft
 
 from app.services import movimientos_service, productos_service
 from app.services.exceptions import ProductoInactivoError, ProductoNoEncontradoError, StockInsuficienteError
+from app.shared.money import formatear_cantidad
 
 MOTIVOS = ["compra", "venta", "devolucion", "ajuste"]
 
@@ -55,7 +56,7 @@ def MovimientosView(page: ft.Page) -> ft.Control:
                     ft.DataCell(ft.Text(m["fecha"])),
                     ft.DataCell(ft.Text(nombre_producto(m["producto_id"]))),
                     ft.DataCell(ft.Text(m["tipo"])),
-                    ft.DataCell(ft.Text(str(m["cantidad"]))),
+                    ft.DataCell(ft.Text(formatear_cantidad(m["cantidad"]))),
                     ft.DataCell(ft.Text(m["motivo"])),
                 ]
             )

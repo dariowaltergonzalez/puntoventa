@@ -20,3 +20,17 @@ def precio_a_entero(valor: Decimal) -> int:
 
 def entero_a_precio(valor: int) -> Decimal:
     return (Decimal(valor) / PRECIO_ESCALA).quantize(Decimal("1.00"))
+
+
+def _formatear_es_ar(valor: Decimal, decimales: int) -> str:
+    """Formatea un Decimal al estilo argentino: punto para miles, coma para decimales."""
+    texto = f"{valor:,.{decimales}f}"
+    return texto.replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def formatear_precio(valor: Decimal) -> str:
+    return _formatear_es_ar(valor, 2)
+
+
+def formatear_cantidad(valor: Decimal) -> str:
+    return _formatear_es_ar(valor, 3)

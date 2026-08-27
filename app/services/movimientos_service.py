@@ -119,6 +119,7 @@ def consultar_stock(categoria_id: int | None = None, solo_activos: bool = True) 
             "categoria_id": p["categoria_id"],
             "unidad": p["unidad"],
             "stock_actual": entero_a_cantidad(p["stock_actual"]),
+            "stock_minimo": entero_a_cantidad(p["stock_minimo"]),
         }
         for p in productos
     ]

@@ -10,6 +10,7 @@ def crear(
     unidad: str,
     precio_costo: int,
     precio_venta: int,
+    stock_minimo: int = 0,
     activo: int = 1,
 ) -> int:
     conn = get_connection()
@@ -17,10 +18,10 @@ def crear(
         cursor = conn.execute(
             """
             INSERT INTO productos
-                (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, stock_actual)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, stock_actual, stock_minimo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
             """,
-            (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo),
+            (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, stock_minimo),
         )
         conn.commit()
         return cursor.lastrowid
@@ -36,6 +37,7 @@ def actualizar(
     unidad: str,
     precio_costo: int,
     precio_venta: int,
+    stock_minimo: int,
     activo: int,
 ) -> None:
     conn = get_connection()
@@ -44,10 +46,10 @@ def actualizar(
             """
             UPDATE productos
             SET codigo = ?, nombre = ?, categoria_id = ?, unidad = ?,
-                precio_costo = ?, precio_venta = ?, activo = ?
+                precio_costo = ?, precio_venta = ?, activo = ?, stock_minimo = ?
             WHERE id = ?
             """,
-            (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, producto_id),
+            (codigo, nombre, categoria_id, unidad, precio_costo, precio_venta, activo, stock_minimo, producto_id),
         )
         conn.commit()
     finally:

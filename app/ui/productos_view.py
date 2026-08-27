@@ -4,6 +4,7 @@ import flet as ft
 
 from app.services import categorias_service, productos_service
 from app.services.exceptions import CategoriaNoEncontradaError, CodigoDuplicadoError, ProductoNoEncontradoError
+from app.shared.money import formatear_cantidad, formatear_precio
 
 
 def ProductosView(page: ft.Page) -> ft.Control:
@@ -12,11 +13,13 @@ def ProductosView(page: ft.Page) -> ft.Control:
     unidad_field = ft.TextField(label="Unidad", hint_text="kg, unidad, litro...")
     precio_costo_field = ft.TextField(label="Precio costo", hint_text="17,45")
     precio_venta_field = ft.TextField(label="Precio venta", hint_text="21,00")
+    stock_minimo_field = ft.TextField(label="Stock minimo", hint_text="5,000")
     categoria_dropdown = ft.Dropdown(label="Categoria", options=[])
     activo_switch = ft.Switch(label="Activo", value=True, visible=False)
     guardar_button_texto = ft.Text("Agregar producto")
     guardar_button = ft.ElevatedButton(content=guardar_button_texto)
     cancelar_button = ft.TextButton("Cancelar", visible=False)
+    buscador_field = ft.TextField(label="Buscar por nombre o codigo", expand=True)
 
     tabla = ft.DataTable(
         columns=[
@@ -27,6 +30,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
             ft.DataColumn(ft.Text("Costo ($)")),
             ft.DataColumn(ft.Text("Venta ($)")),
             ft.DataColumn(ft.Text("Stock")),
+            ft.DataColumn(ft.Text("Stock min.")),
             ft.DataColumn(ft.Text("")),
         ],
         rows=[],
@@ -61,13 +65,23 @@ def ProductosView(page: ft.Page) -> ft.Control:
         unidad_field.value = ""
         precio_costo_field.value = ""
         precio_venta_field.value = ""
+        stock_minimo_field.value = ""
         categoria_dropdown.value = None
         activo_switch.visible = False
         activo_switch.value = True
         guardar_button_texto.value = "Agregar producto"
         cancelar_button.visible = False
 
+    def coincide_busqueda(producto: dict, texto: str) -> bool:
+        texto = texto.strip().lower()
+        if not texto:
+            return True
+        return texto in producto["nombre"].lower() or texto in producto["codigo"].lower()
+
     def refrescar_tabla() -> None:
+        productos = [
+            p for p in productos_service.listar_productos() if coincide_busqueda(p, buscador_field.value or "")
+        ]
         tabla.rows = [
             ft.DataRow(
                 cells=[
@@ -75,15 +89,16 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     ft.DataCell(ft.Text(p["nombre"])),
                     ft.DataCell(ft.Text(nombre_categoria(p["categoria_id"]))),
                     ft.DataCell(ft.Text(p["unidad"])),
-                    ft.DataCell(ft.Text(str(p["precio_costo"]))),
-                    ft.DataCell(ft.Text(str(p["precio_venta"]))),
-                    ft.DataCell(ft.Text(str(p["stock_actual"]))),
+                    ft.DataCell(ft.Text(formatear_precio(p["precio_costo"]))),
+                    ft.DataCell(ft.Text(formatear_precio(p["precio_venta"]))),
+                    ft.DataCell(ft.Text(formatear_cantidad(p["stock_actual"]))),
+                    ft.DataCell(ft.Text(formatear_cantidad(p["stock_minimo"]))),
                     ft.DataCell(
                         ft.IconButton(ft.Icons.EDIT, tooltip="Editar", data=p["id"], on_click=iniciar_edicion)
                     ),
                 ]
             )
-            for p in productos_service.listar_productos()
+            for p in productos
         ]
         page.update()
 
@@ -98,6 +113,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
         unidad_field.value = producto["unidad"]
         precio_costo_field.value = str(producto["precio_costo"])
         precio_venta_field.value = str(producto["precio_venta"])
+        stock_minimo_field.value = str(producto["stock_minimo"])
         categoria_dropdown.value = str(producto["categoria_id"])
         activo_switch.value = producto["activo"]
         activo_switch.visible = True
@@ -108,6 +124,9 @@ def ProductosView(page: ft.Page) -> ft.Control:
     def cancelar(e: ft.ControlEvent) -> None:
         limpiar_formulario()
         page.update()
+
+    def buscar(e: ft.ControlEvent) -> None:
+        refrescar_tabla()
 
     def guardar(e: ft.ControlEvent) -> None:
         try:
@@ -120,6 +139,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
             unidad = unidad_field.value or ""
             precio_costo = parsear_decimal(precio_costo_field.value, "Precio costo")
             precio_venta = parsear_decimal(precio_venta_field.value, "Precio venta")
+            stock_minimo = parsear_decimal(stock_minimo_field.value, "Stock minimo")
 
             if editando_id is None:
                 productos_service.crear_producto(
@@ -129,6 +149,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     unidad=unidad,
                     precio_costo=precio_costo,
                     precio_venta=precio_venta,
+                    stock_minimo=stock_minimo,
                 )
             else:
                 productos_service.actualizar_producto(
@@ -139,6 +160,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     unidad=unidad,
                     precio_costo=precio_costo,
                     precio_venta=precio_venta,
+                    stock_minimo=stock_minimo,
                     activo=activo_switch.value,
                 )
             limpiar_formulario()
@@ -148,6 +170,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
 
     guardar_button.on_click = guardar
     cancelar_button.on_click = cancelar
+    buscador_field.on_change = buscar
 
     refrescar_categorias()
     refrescar_tabla()
@@ -156,8 +179,9 @@ def ProductosView(page: ft.Page) -> ft.Control:
         [
             ft.Text("Productos", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([codigo_field, nombre_field, unidad_field]),
-            ft.Row([categoria_dropdown, precio_costo_field, precio_venta_field, activo_switch]),
+            ft.Row([categoria_dropdown, precio_costo_field, precio_venta_field, stock_minimo_field, activo_switch]),
             ft.Row([guardar_button, cancelar_button]),
+            ft.Row([buscador_field]),
             tabla,
         ],
         expand=True,

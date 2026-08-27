@@ -14,6 +14,8 @@ def get_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     if is_new:
         _init_schema(conn)
+    else:
+        _migrar(conn)
     return conn
 
 
@@ -21,3 +23,10 @@ def _init_schema(conn: sqlite3.Connection) -> None:
     sql = Path(SCHEMA_PATH).read_text(encoding="utf-8")
     conn.executescript(sql)
     conn.commit()
+
+
+def _migrar(conn: sqlite3.Connection) -> None:
+    """Migraciones aditivas simples para bases creadas con una version anterior del schema."""
+    columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(productos)")}
+    if "stock_minimo" not in columnas:
+        conn.execute("ALTER TABLE productos ADD COLUMN stock_minimo INTEGER NOT NULL DEFAULT 0")
