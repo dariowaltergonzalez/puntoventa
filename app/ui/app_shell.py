@@ -49,7 +49,7 @@ def build_app(page: ft.Page) -> None:
             idx = indice_actual
             fila = ft.Container(
                 content=ft.Row([ft.Icon(icono, size=18), ft.Text(nombre_pantalla)], spacing=8),
-                padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                padding=ft.Padding.symmetric(horizontal=12, vertical=8),
                 border_radius=6,
                 on_click=lambda e, i=idx: seleccionar(i),
             )

@@ -227,15 +227,55 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     )
     contador_texto = ft.Text("")
     nueva_oc_button = ft.ElevatedButton("+ Nueva orden de compra")
-    tabla_lista = ft.DataTable(
-        columns=[ft.DataColumn(ft.Text(t)) for t in
-                 ["Numero", "Proveedor", "Estado", "Fecha", "F. estimada", "IVA %", "Total estimado", ""]],
-        rows=[],
+
+    _ANCHOS_COLUMNAS_LISTA = [90, 160, 130, 90, 90, 60, 110]
+    _TITULOS_COLUMNAS_LISTA = ["Numero", "Proveedor", "Estado", "Fecha", "F. estimada", "IVA %", "Total estimado"]
+    encabezado_lista = ft.Row(
+        [
+            ft.Container(ft.Text(t, weight=ft.FontWeight.BOLD), width=w)
+            for t, w in zip(_TITULOS_COLUMNAS_LISTA, _ANCHOS_COLUMNAS_LISTA)
+        ]
+        + [ft.Container(width=40)]
     )
+    lista_filas = ft.Column([])
 
     def nombre_proveedor(proveedor_id: int) -> str:
         proveedor = proveedores_service.obtener_proveedor(proveedor_id)
         return proveedor["nombre"] if proveedor else "?"
+
+    def construir_fila_oc(oc: dict) -> ft.ExpansionTile:
+        valores = [
+            oc["numero"],
+            nombre_proveedor(oc["proveedor_id"]),
+            ESTADOS_LABEL.get(oc["estado"], oc["estado"]),
+            oc["fecha_creacion"][:10],
+            oc["fecha_estimada"] or "-",
+            str(oc["iva_porcentaje"]) if oc["iva_porcentaje"] is not None else "-",
+            formatear_precio(oc["total_estimado"]),
+        ]
+        titulo = ft.Row(
+            [ft.Container(ft.Text(v), width=w) for v, w in zip(valores, _ANCHOS_COLUMNAS_LISTA)]
+            + [ft.IconButton(ft.Icons.VISIBILITY, tooltip="Ver detalle / acciones", data=oc["id"],
+                              on_click=lambda e: ir_a_detalle(e.control.data))]
+        )
+        items_tabla = ft.DataTable(
+            columns=[ft.DataColumn(ft.Text(t)) for t in
+                     ["Producto / Descripcion", "Cant. pedida", "Costo pactado", "Cant. recibida"]],
+            rows=[
+                ft.DataRow(cells=[
+                    ft.DataCell(ft.Text(item["descripcion_libre"] or f"{item['producto_codigo']} - {item['producto_nombre']}")),
+                    ft.DataCell(ft.Text(formatear_cantidad(item["cantidad_pedida"]))),
+                    ft.DataCell(ft.Text(formatear_precio(item["costo_pactado"]))),
+                    ft.DataCell(ft.Text(formatear_cantidad(item["cantidad_recibida"]))),
+                ])
+                for item in oc["items"]
+            ],
+        )
+        return ft.ExpansionTile(
+            title=titulo,
+            controls=[items_tabla],
+            tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
+        )
 
     def refrescar_lista(e: ft.ControlEvent | None = None) -> None:
         estado = estado_filtro_dropdown.value or None
@@ -248,21 +288,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             f"Pendientes: {pendientes}   |   Recibidas parcial: {parciales}   |   "
             f"Recibidas: {recibidas}   |   Canceladas: {canceladas}"
         )
-        tabla_lista.rows = [
-            ft.DataRow(
-                cells=[
-                    ft.DataCell(ft.Text(o["numero"])),
-                    ft.DataCell(ft.Text(nombre_proveedor(o["proveedor_id"]))),
-                    ft.DataCell(ft.Text(ESTADOS_LABEL.get(o["estado"], o["estado"]))),
-                    ft.DataCell(ft.Text(o["fecha_creacion"][:10])),
-                    ft.DataCell(ft.Text(o["fecha_estimada"] or "-")),
-                    ft.DataCell(ft.Text(str(o["iva_porcentaje"]) if o["iva_porcentaje"] is not None else "-")),
-                    ft.DataCell(ft.Text(formatear_precio(o["total_estimado"]))),
-                    ft.DataCell(ft.IconButton(ft.Icons.VISIBILITY, tooltip="Ver detalle", data=o["id"], on_click=lambda e: ir_a_detalle(e.control.data))),
-                ]
-            )
-            for o in ocs
-        ]
+        lista_filas.controls = [construir_fila_oc(o) for o in ocs]
         page.update()
 
     estado_filtro_dropdown.on_change = refrescar_lista
@@ -273,7 +299,9 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             ft.Text("Ordenes de Compra", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([estado_filtro_dropdown, nueva_oc_button]),
             contador_texto,
-            tabla_lista,
+            encabezado_lista,
+            ft.Divider(height=1),
+            lista_filas,
         ],
         visible=True,
     )
