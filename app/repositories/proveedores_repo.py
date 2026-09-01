@@ -72,3 +72,28 @@ def listar(solo_activos: bool = False) -> list[sqlite3.Row]:
         return conn.execute(sql).fetchall()
     finally:
         conn.close()
+
+
+def obtener_por_nombre(nombre: str, conn: sqlite3.Connection | None = None) -> sqlite3.Row | None:
+    conexion_propia = conn is None
+    if conexion_propia:
+        conn = get_connection()
+    try:
+        return conn.execute("SELECT * FROM proveedores WHERE nombre = ?", (nombre,)).fetchone()
+    finally:
+        if conexion_propia:
+            conn.close()
+
+
+def obtener_o_crear_por_nombre(nombre: str, conn: sqlite3.Connection | None = None) -> sqlite3.Row:
+    """Get-or-create idempotente y atomico (INSERT ... ON CONFLICT DO NOTHING evita la race
+    condition de leer-luego-insertar). El proveedor auto-creado solo tiene 'nombre'."""
+    conexion_propia = conn is None
+    if conexion_propia:
+        conn = get_connection()
+    try:
+        conn.execute("INSERT INTO proveedores (nombre, activo) VALUES (?, 1) ON CONFLICT(nombre) DO NOTHING", (nombre,))
+        return conn.execute("SELECT * FROM proveedores WHERE nombre = ?", (nombre,)).fetchone()
+    finally:
+        if conexion_propia:
+            conn.close()

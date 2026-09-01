@@ -32,3 +32,19 @@ class ProveedorDuplicadoError(Exception):
 
 class ProveedorNoEncontradoError(Exception):
     pass
+
+
+class LineasVaciasError(Exception):
+    pass
+
+
+class OrdenCompraNoEncontradaError(Exception):
+    pass
+
+
+class OrdenCompraCanceladaError(Exception):
+    pass
+
+
+class OrdenCompraNoEditableError(Exception):
+    pass

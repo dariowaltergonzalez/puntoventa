@@ -11,14 +11,19 @@ def registrar_movimiento_y_actualizar_stock(
     motivo: str,
     referencia: str | None = None,
     observacion: str | None = None,
+    lote_id: int | None = None,
+    precio_unitario: int | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> int:
     """Operacion atomica: inserta el movimiento y actualiza productos.stock_actual en una unica
     transaccion. No valida reglas de negocio (stock negativo, producto activo, etc.) -- eso ya
-    vino validado desde la capa de servicios antes de llamar aca."""
-    conn = get_connection()
-    try:
+    vino validado desde la capa de servicios antes de llamar aca. Si se pasa conn, participa de
+    esa transaccion ya abierta (uso desde recepciones_repo) en vez de abrir la propia."""
+    conexion_propia = conn is None
+    if conexion_propia:
+        conn = get_connection()
         conn.execute("BEGIN IMMEDIATE")
-
+    try:
         fila = conn.execute(
             "SELECT stock_actual FROM productos WHERE id = ?", (producto_id,)
         ).fetchone()
@@ -33,10 +38,11 @@ def registrar_movimiento_y_actualizar_stock(
 
         cursor = conn.execute(
             """
-            INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, motivo, referencia, observacion)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO movimientos
+                (producto_id, tipo, cantidad, fecha, motivo, referencia, observacion, lote_id, precio_unitario)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (producto_id, tipo, cantidad, fecha, motivo, referencia, observacion),
+            (producto_id, tipo, cantidad, fecha, motivo, referencia, observacion, lote_id, precio_unitario),
         )
         movimiento_id = cursor.lastrowid
 
@@ -44,13 +50,16 @@ def registrar_movimiento_y_actualizar_stock(
             "UPDATE productos SET stock_actual = ? WHERE id = ?", (nuevo_stock, producto_id)
         )
 
-        conn.commit()
+        if conexion_propia:
+            conn.commit()
         return movimiento_id
     except Exception:
-        conn.rollback()
+        if conexion_propia:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conexion_propia:
+            conn.close()
 
 
 def obtener_por_id(movimiento_id: int) -> sqlite3.Row | None:

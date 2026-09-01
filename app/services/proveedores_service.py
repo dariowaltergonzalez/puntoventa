@@ -6,6 +6,8 @@ from app.services.exceptions import ProveedorDuplicadoError, ProveedorNoEncontra
 
 _CAMPOS_LOG = ["nombre", "cuit", "contacto", "telefono", "email", "direccion", "observaciones", "activo"]
 
+NOMBRE_PROVEEDOR_GENERICO = "Proveedor Generico"
+
 
 def _a_dict(fila: sqlite3.Row) -> dict:
     return {
@@ -102,3 +104,14 @@ def obtener_proveedor(proveedor_id: int) -> dict | None:
 
 def listar_proveedores(solo_activos: bool = False) -> list[dict]:
     return [_a_dict(fila) for fila in proveedores_repo.listar(solo_activos)]
+
+
+def obtener_o_crear_proveedor_por_nombre(nombre: str) -> dict:
+    nombre = nombre.strip()
+    if not nombre:
+        raise ValueError("El nombre del proveedor no puede estar vacio")
+    return _a_dict(proveedores_repo.obtener_o_crear_por_nombre(nombre))
+
+
+def obtener_o_crear_proveedor_generico() -> dict:
+    return _a_dict(proveedores_repo.obtener_o_crear_por_nombre(NOMBRE_PROVEEDOR_GENERICO))
