@@ -14,6 +14,7 @@ from app.services.exceptions import (
     ProveedorNoEncontradoError,
 )
 from app.shared.money import formatear_cantidad, formatear_precio
+from app.ui.listados import Paginador, coincide_exacto, coincide_texto, filtrar
 
 TIPO_EXISTENTE = "Producto existente"
 TIPO_NUEVO = "Producto nuevo"
@@ -225,8 +226,13 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         ],
         value="",
     )
+    buscador_field = ft.TextField(label="Buscar por numero o proveedor", width=280)
     contador_texto = ft.Text("")
     nueva_oc_button = ft.ElevatedButton("+ Nueva orden de compra")
+    imprimir_button = ft.ElevatedButton(
+        "Imprimir", icon=ft.Icons.PRINT,
+        on_click=lambda e: mostrar_mensaje("La exportacion a PDF va a estar disponible en una fase futura"),
+    )
 
     _ANCHOS_COLUMNAS_LISTA = [90, 160, 130, 90, 90, 60, 110]
     _TITULOS_COLUMNAS_LISTA = ["Numero", "Proveedor", "Estado", "Fecha", "F. estimada", "IVA %", "Total estimado"]
@@ -278,30 +284,41 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         )
 
     def refrescar_lista(e: ft.ControlEvent | None = None) -> None:
-        estado = estado_filtro_dropdown.value or None
-        ocs = ordenes_compra_service.listar_ordenes_compra(estado=estado)
-        pendientes = sum(1 for o in ocs if o["estado"] == "pendiente")
-        parciales = sum(1 for o in ocs if o["estado"] == "recibida_parcial")
-        recibidas = sum(1 for o in ocs if o["estado"] == "recibida")
-        canceladas = sum(1 for o in ocs if o["estado"] == "cancelada")
+        todas = ordenes_compra_service.listar_ordenes_compra()
+        pendientes = sum(1 for o in todas if o["estado"] == "pendiente")
+        parciales = sum(1 for o in todas if o["estado"] == "recibida_parcial")
+        recibidas = sum(1 for o in todas if o["estado"] == "recibida")
+        canceladas = sum(1 for o in todas if o["estado"] == "cancelada")
         contador_texto.value = (
             f"Pendientes: {pendientes}   |   Recibidas parcial: {parciales}   |   "
             f"Recibidas: {recibidas}   |   Canceladas: {canceladas}"
         )
-        lista_filas.controls = [construir_fila_oc(o) for o in ocs]
+
+        def texto_busqueda_oc(oc: dict) -> str:
+            return f"{oc['numero']} {nombre_proveedor(oc['proveedor_id'])}"
+
+        filtradas = filtrar(todas, [
+            lambda o: coincide_exacto(o["estado"], estado_filtro_dropdown.value or None),
+            lambda o: coincide_texto(texto_busqueda_oc(o), buscador_field.value),
+        ])
+        pagina = paginador.aplicar(filtradas)
+        lista_filas.controls = [construir_fila_oc(o) for o in pagina]
         page.update()
 
+    paginador = Paginador(on_cambio=refrescar_lista)
     estado_filtro_dropdown.on_change = refrescar_lista
+    buscador_field.on_change = refrescar_lista
     nueva_oc_button.on_click = lambda e: ir_a_formulario(None)
 
     seccion_lista = ft.Column(
         [
             ft.Text("Ordenes de Compra", size=20, weight=ft.FontWeight.BOLD),
-            ft.Row([estado_filtro_dropdown, nueva_oc_button]),
+            ft.Row([estado_filtro_dropdown, buscador_field, imprimir_button, nueva_oc_button]),
             contador_texto,
             encabezado_lista,
             ft.Divider(height=1),
             lista_filas,
+            paginador.controles,
         ],
         visible=True,
     )
