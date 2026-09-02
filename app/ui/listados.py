@@ -77,7 +77,7 @@ class Paginador:
         self.anterior_button = ft.IconButton(ft.Icons.CHEVRON_LEFT, tooltip="Anterior", on_click=lambda e: self._ir(self.pagina_actual - 1))
         self.siguiente_button = ft.IconButton(ft.Icons.CHEVRON_RIGHT, tooltip="Siguiente", on_click=lambda e: self._ir(self.pagina_actual + 1))
         self.ultimo_button = ft.IconButton(ft.Icons.LAST_PAGE, tooltip="Ultima pagina", on_click=lambda e: self._ir(self.total_paginas()))
-        self.tamano_dropdown.on_change = self._cambiar_tamano
+        self.tamano_dropdown.on_select = self._cambiar_tamano
 
         self.controles = ft.Row([
             self.tamano_dropdown, self.primero_button, self.anterior_button,

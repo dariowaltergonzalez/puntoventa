@@ -79,7 +79,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             descripcion_field.visible = es_libre
             page.update()
 
-        tipo_dropdown.on_change = cambiar_tipo
+        tipo_dropdown.on_select = cambiar_tipo
 
         fila = ft.Row([tipo_dropdown, producto_dropdown, descripcion_field, cantidad_field, costo_field, eliminar_button])
         linea = {
@@ -166,7 +166,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             descripcion_field.visible = tipo == TIPO_LIBRE
             page.update()
 
-        tipo_dropdown.on_change = cambiar_tipo
+        tipo_dropdown.on_select = cambiar_tipo
 
         fila = ft.Row([tipo_dropdown, producto_dropdown, codigo_field, nombre_field, categoria_dropdown,
                        descripcion_field, cantidad_field, costo_field, eliminar_button])
@@ -306,7 +306,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         page.update()
 
     paginador = Paginador(on_cambio=refrescar_lista)
-    estado_filtro_dropdown.on_change = refrescar_lista
+    estado_filtro_dropdown.on_select = refrescar_lista
     buscador_field.on_change = refrescar_lista
     nueva_oc_button.on_click = lambda e: ir_a_formulario(None)
 

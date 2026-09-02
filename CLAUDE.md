@@ -59,6 +59,7 @@ Reglas que no se rompen:
 Peculiaridades de esta versión de Flet que ya nos mordieron — no asumir que la documentación vieja de Flet aplica tal cual:
 - `page.show_dialog(ft.SnackBar(ft.Text(mensaje)))` para mostrar mensajes — **no** `page.open(...)` (no existe en esta versión).
 - `ft.Padding.symmetric(...)` (con mayúscula) — **no** `ft.padding.symmetric` (no existe).
+- `ft.Dropdown` dispara `on_select`, **no** `on_change` (`on_change` no existe en `Dropdown` en esta versión y falla en silencio: no tira error, simplemente el handler nunca se llama). Ojo que esto es específico de `Dropdown` — `TextField` y `Switch` sí usan `on_change` normalmente. Bug real que costó bastante encontrar porque no hay excepción visible: si un filtro con dropdown "no filtra" sin ningún error en la terminal, revisar esto primero.
 - Mutar `.text` de un `ElevatedButton` ya construido **no se refleja visualmente**. Para un botón cuyo texto cambia (ej. "Agregar" ↔ "Guardar cambios"), usar un `ft.Text` separado como `content=` del botón y mutar `.value` de ese `Text`.
 - `ft.run(main)` para arrancar la app — `ft.app(target=main)` está deprecado.
 

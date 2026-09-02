@@ -73,7 +73,7 @@ def StockView(page: ft.Page) -> ft.Control:
 
     refrescar_categorias()
     refrescar_tabla()
-    categoria_dropdown.on_change = filtrar
+    categoria_dropdown.on_select = filtrar
     buscador_field.on_change = filtrar
 
     return ft.Column(

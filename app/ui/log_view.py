@@ -42,7 +42,7 @@ def LogView(page: ft.Page) -> ft.Control:
     def filtrar(e: ft.ControlEvent) -> None:
         refrescar_tabla()
 
-    entidad_dropdown.on_change = filtrar
+    entidad_dropdown.on_select = filtrar
     buscador_field.on_change = filtrar
 
     refrescar_tabla()
