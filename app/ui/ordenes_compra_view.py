@@ -486,10 +486,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                  ["Producto / Descripcion", "Cant. pedida", "Costo pactado", "Cant. recibida", "Costo real (prom.)", ""]],
         rows=[],
     )
-    tabla_recepciones = ft.DataTable(
-        columns=[ft.DataColumn(ft.Text(t)) for t in ["Fecha", "Remito", "Observacion"]],
-        rows=[],
-    )
+    contenedor_recepciones = ft.Column([])
 
     editar_oc_button = ft.ElevatedButton("Editar")
     cancelar_oc_button = ft.ElevatedButton("Cancelar orden", bgcolor=ft.Colors.RED_100)
@@ -557,14 +554,41 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             )
 
         recepciones = recepciones_service.listar_recepciones_de_orden(detalle_oc_id)
-        tabla_recepciones.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(r["fecha"][:16])),
-                ft.DataCell(ft.Text(r["numero_remito"] or "-")),
-                ft.DataCell(ft.Text(r["observacion"] or "-")),
-            ])
-            for r in recepciones
-        ]
+        contenedor_recepciones.controls = []
+        for r in recepciones:
+            items_r = recepciones_service.listar_items_recepcion(r["id"])
+            tabla_items_r = ft.DataTable(
+                columns=[ft.DataColumn(ft.Text(t)) for t in
+                         ["Producto / Descripcion", "Cantidad", "Costo real", "Subtotal", ""]],
+                rows=[
+                    ft.DataRow(cells=[
+                        ft.DataCell(ft.Text(
+                            item["descripcion_libre"] or f"{item['producto_codigo']} - {item['producto_nombre']}"
+                        )),
+                        ft.DataCell(ft.Text(formatear_cantidad(item["cantidad_recibida"]))),
+                        ft.DataCell(ft.Text(formatear_precio(item["costo_unitario"]))),
+                        ft.DataCell(ft.Text(formatear_precio(item["subtotal"]))),
+                        ft.DataCell(
+                            ft.Text("No pedido", color=ft.Colors.ORANGE, weight=ft.FontWeight.BOLD)
+                            if item["orden_compra_item_id"] is None
+                            else ft.Text("")
+                        ),
+                    ])
+                    for item in items_r
+                ],
+            )
+            contenedor_recepciones.controls.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text(
+                            f"{r['fecha'][:16]}   |   Remito: {r['numero_remito'] or '-'}"
+                            + (f"   |   {r['observacion']}" if r["observacion"] else "")
+                        ),
+                        tabla_items_r,
+                    ]),
+                    padding=ft.Padding.symmetric(vertical=8),
+                )
+            )
 
         editar_oc_button.visible = oc["estado"] == "pendiente" and not recepciones
         cancelar_oc_button.visible = oc["estado"] in ("pendiente", "recibida_parcial")
@@ -685,7 +709,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             ft.Text("Lineas pedidas", weight=ft.FontWeight.BOLD),
             tabla_items_oc,
             ft.Text("Historial de recepciones", weight=ft.FontWeight.BOLD),
-            tabla_recepciones,
+            contenedor_recepciones,
         ],
         visible=False,
         scroll=ft.ScrollMode.AUTO,
