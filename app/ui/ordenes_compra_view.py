@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 import flet as ft
@@ -353,6 +354,8 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     def toggle_ya_en_mano(e: ft.ControlEvent) -> None:
         remito_field.visible = ya_en_mano_switch.value
         recepcion_observacion_field.visible = ya_en_mano_switch.value
+        if ya_en_mano_switch.value and not fecha_estimada_field.value:
+            fecha_estimada_field.value = date.today().isoformat()
         page.update()
 
     ya_en_mano_switch.on_change = toggle_ya_en_mano
