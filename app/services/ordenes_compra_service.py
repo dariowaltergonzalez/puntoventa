@@ -265,6 +265,7 @@ def _oc_a_dict(fila: sqlite3.Row, items: list[dict]) -> dict:
         "fecha_estimada": fila["fecha_estimada"],
         "iva_porcentaje": fila["iva_porcentaje"],
         "observacion": fila["observacion"],
+        "recibida_en_el_acto": bool(fila["recibida_en_el_acto"]),
         "items": items,
         "total_estimado": total_estimado,
     }

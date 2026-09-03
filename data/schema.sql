@@ -71,11 +71,13 @@ CREATE TABLE IF NOT EXISTS ordenes_compra (
     fecha_estimada    TEXT,                               -- nullable
     iva_porcentaje    INTEGER,                            -- % IVA opcional (ej 21); NULL = sin IVA
     observacion       TEXT,
+    recibida_en_el_acto INTEGER NOT NULL DEFAULT 0,        -- 1 si se creo y recibio en el mismo momento ('ya la tenes en mano')
     FOREIGN KEY (proveedor_id) REFERENCES proveedores (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
     CHECK (estado IN ('pendiente', 'recibida_parcial', 'recibida', 'cancelada')),
-    CHECK (iva_porcentaje IS NULL OR iva_porcentaje >= 0)
+    CHECK (iva_porcentaje IS NULL OR iva_porcentaje >= 0),
+    CHECK (recibida_en_el_acto IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS orden_compra_items (

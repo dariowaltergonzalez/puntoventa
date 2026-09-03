@@ -298,8 +298,18 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             str(oc["iva_porcentaje"]) if oc["iva_porcentaje"] is not None else "-",
             formatear_precio(oc["total_estimado"]),
         ]
+        celdas = [ft.Container(ft.Text(v), width=w) for v, w in zip(valores, _ANCHOS_COLUMNAS_LISTA)]
+        if oc["recibida_en_el_acto"]:
+            celdas[0] = ft.Container(
+                ft.Row([
+                    ft.Text(oc["numero"]),
+                    ft.Icon(ft.Icons.BOLT, size=16, color=ft.Colors.AMBER_700,
+                            tooltip="Creada y recibida en el acto (\"ya la tenes en mano\")"),
+                ], spacing=2, tight=True),
+                width=_ANCHOS_COLUMNAS_LISTA[0],
+            )
         titulo = ft.Row(
-            [ft.Container(ft.Text(v), width=w) for v, w in zip(valores, _ANCHOS_COLUMNAS_LISTA)]
+            celdas
             + [ft.IconButton(ft.Icons.VISIBILITY, tooltip="Ver detalle / acciones", data=oc["id"],
                               on_click=lambda e: ir_a_detalle(e.control.data))]
         )
@@ -555,7 +565,8 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         oc = ordenes_compra_service.obtener_orden_compra(detalle_oc_id)
         detalle_titulo.value = f"{oc['numero']} - {nombre_proveedor(oc['proveedor_id'])}"
         detalle_info.value = (
-            f"Estado: {ESTADOS_LABEL.get(oc['estado'], oc['estado'])}   |   "
+            ("Creada y recibida en el acto   |   " if oc["recibida_en_el_acto"] else "")
+            + f"Estado: {ESTADOS_LABEL.get(oc['estado'], oc['estado'])}   |   "
             f"Fecha: {oc['fecha_creacion'][:10]}   |   "
             f"F. estimada: {oc['fecha_estimada'] or '-'}   |   "
             f"IVA: {oc['iva_porcentaje'] if oc['iva_porcentaje'] is not None else '-'}%   |   "

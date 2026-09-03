@@ -107,6 +107,30 @@ def _migrar(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ordenes_compra_proveedor_id ON ordenes_compra (proveedor_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ordenes_compra_estado ON ordenes_compra (estado)")
 
+    columnas_ordenes_compra = {fila["name"] for fila in conn.execute("PRAGMA table_info(ordenes_compra)")}
+    if "recibida_en_el_acto" not in columnas_ordenes_compra:
+        conn.execute(
+            "ALTER TABLE ordenes_compra ADD COLUMN recibida_en_el_acto INTEGER NOT NULL DEFAULT 0 "
+            "CHECK (recibida_en_el_acto IN (0, 1))"
+        )
+        # Backfill unico, best-effort: para las OC creadas antes de que existiera esta columna no queda
+        # registrado si nacieron con 'ya la tenes en mano' -- se infiere por unica recepcion a los pocos
+        # segundos de la creacion (una recepcion diferida real tarda minutos/horas/dias, no segundos).
+        conn.execute(
+            """
+            UPDATE ordenes_compra
+            SET recibida_en_el_acto = 1
+            WHERE id IN (
+                SELECT oc.id
+                FROM ordenes_compra oc
+                JOIN recepciones r ON r.orden_compra_id = oc.id
+                GROUP BY oc.id
+                HAVING COUNT(r.id) = 1
+                   AND ABS((julianday(MIN(r.fecha)) - julianday(oc.fecha_creacion)) * 86400.0) < 5
+            )
+            """
+        )
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS orden_compra_items (

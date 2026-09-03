@@ -12,6 +12,7 @@ def crear(
     observacion: str | None,
     items: list[dict],
     estado: str = "pendiente",
+    recibida_en_el_acto: bool = False,
     conn: sqlite3.Connection | None = None,
 ) -> dict:
     """items: [{'producto_id': int|None, 'descripcion_libre': str|None, 'cantidad_pedida': int,
@@ -25,10 +26,12 @@ def crear(
         cursor = conn.execute(
             """
             INSERT INTO ordenes_compra
-                (numero, proveedor_id, estado, fecha_creacion, fecha_estimada, iva_porcentaje, observacion)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (numero, proveedor_id, estado, fecha_creacion, fecha_estimada, iva_porcentaje, observacion,
+                 recibida_en_el_acto)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (numero, proveedor_id, estado, fecha_creacion, fecha_estimada, iva_porcentaje, observacion),
+            (numero, proveedor_id, estado, fecha_creacion, fecha_estimada, iva_porcentaje, observacion,
+             int(recibida_en_el_acto)),
         )
         orden_compra_id = cursor.lastrowid
         for item in items:
@@ -93,7 +96,7 @@ def crear_con_recepcion_inmediata(
 
         oc = crear(
             proveedor_id, fecha_creacion, fecha_estimada, iva_porcentaje, observacion,
-            items, estado="pendiente", conn=conn,
+            items, estado="pendiente", recibida_en_el_acto=True, conn=conn,
         )
         items_oc_creados = conn.execute(
             "SELECT id FROM orden_compra_items WHERE orden_compra_id = ? ORDER BY id", (oc["id"],)
