@@ -63,28 +63,39 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             ft.dropdown.Option(key=str(p["id"]), text=f"{p['codigo']} - {p['nombre']}")
             for p in productos_service.listar_productos(solo_activos=True)
         ]
+        categorias_options = [ft.dropdown.Option(key="", text="Sin elegir")] + [
+            ft.dropdown.Option(key=str(c["id"]), text=c["nombre"]) for c in categorias_service.listar_categorias()
+        ]
         tipo_dropdown = ft.Dropdown(
             label="Tipo", width=170,
-            options=[ft.dropdown.Option(TIPO_EXISTENTE), ft.dropdown.Option(TIPO_LIBRE)],
+            options=[ft.dropdown.Option(TIPO_EXISTENTE), ft.dropdown.Option(TIPO_NUEVO), ft.dropdown.Option(TIPO_LIBRE)],
             value=TIPO_EXISTENTE,
         )
         producto_dropdown = ft.Dropdown(label="Producto", width=220, options=productos_options)
+        codigo_field = ft.TextField(label="Codigo nuevo", width=110, visible=False)
+        nombre_field = ft.TextField(label="Nombre nuevo", width=170, visible=False)
+        categoria_dropdown = ft.Dropdown(label="Categoria (opcional)", width=150, visible=False, options=categorias_options, value="")
         descripcion_field = ft.TextField(label="Descripcion", width=220, visible=False)
         cantidad_field = ft.TextField(label="Cantidad", width=100, hint_text="10,000")
         costo_field = ft.TextField(label="Costo unit.", width=100, hint_text="5,00")
         eliminar_button = ft.IconButton(ft.Icons.DELETE, tooltip="Quitar linea")
 
         def cambiar_tipo(e: ft.ControlEvent) -> None:
-            es_libre = tipo_dropdown.value == TIPO_LIBRE
-            producto_dropdown.visible = not es_libre
-            descripcion_field.visible = es_libre
+            tipo = tipo_dropdown.value
+            producto_dropdown.visible = tipo == TIPO_EXISTENTE
+            codigo_field.visible = tipo == TIPO_NUEVO
+            nombre_field.visible = tipo == TIPO_NUEVO
+            categoria_dropdown.visible = tipo == TIPO_NUEVO
+            descripcion_field.visible = tipo == TIPO_LIBRE
             page.update()
 
         tipo_dropdown.on_select = cambiar_tipo
 
-        fila = ft.Row([tipo_dropdown, producto_dropdown, descripcion_field, cantidad_field, costo_field, eliminar_button])
+        fila = ft.Row([tipo_dropdown, producto_dropdown, codigo_field, nombre_field, categoria_dropdown,
+                       descripcion_field, cantidad_field, costo_field, eliminar_button])
         linea = {
             "tipo_dropdown": tipo_dropdown, "producto_dropdown": producto_dropdown,
+            "codigo_field": codigo_field, "nombre_field": nombre_field, "categoria_dropdown": categoria_dropdown,
             "descripcion_field": descripcion_field, "cantidad_field": cantidad_field,
             "costo_field": costo_field, "fila": fila,
         }
@@ -103,22 +114,34 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         contenedor_lineas_pedido.controls = [l["fila"] for l in lineas_form]
         page.update()
 
+    def construir_producto_nuevo_pedido(linea: dict) -> dict:
+        categoria_id = int(linea["categoria_dropdown"].value) if linea["categoria_dropdown"].value else None
+        return {
+            "codigo": (linea["codigo_field"].value or "").strip(),
+            "nombre": (linea["nombre_field"].value or "").strip(),
+            "categoria_id": categoria_id,
+        }
+
     def construir_items_pedido() -> list[dict]:
         items = []
         for linea in lineas_form:
             cantidad = parsear_decimal(linea["cantidad_field"].value, "Cantidad")
             costo = parsear_decimal(linea["costo_field"].value, "Costo unitario")
-            if linea["tipo_dropdown"].value == TIPO_LIBRE:
+            tipo = linea["tipo_dropdown"].value
+            if tipo == TIPO_LIBRE:
                 descripcion = (linea["descripcion_field"].value or "").strip()
                 if not descripcion:
                     raise ValueError("Completa la descripcion del item libre")
-                items.append({"producto_id": None, "descripcion_libre": descripcion,
+                items.append({"producto_id": None, "producto_nuevo": None, "descripcion_libre": descripcion,
                               "cantidad_pedida": cantidad, "costo_pactado": costo})
+            elif tipo == TIPO_NUEVO:
+                items.append({"producto_id": None, "producto_nuevo": construir_producto_nuevo_pedido(linea),
+                              "descripcion_libre": None, "cantidad_pedida": cantidad, "costo_pactado": costo})
             else:
                 if not linea["producto_dropdown"].value:
                     raise ValueError("Elegi un producto para la linea")
-                items.append({"producto_id": int(linea["producto_dropdown"].value), "descripcion_libre": None,
-                              "cantidad_pedida": cantidad, "costo_pactado": costo})
+                items.append({"producto_id": int(linea["producto_dropdown"].value), "producto_nuevo": None,
+                              "descripcion_libre": None, "cantidad_pedida": cantidad, "costo_pactado": costo})
         return items
 
     def construir_items_recepcion_desde_pedido() -> list[dict]:
@@ -127,10 +150,14 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         for linea in lineas_form:
             cantidad = parsear_decimal(linea["cantidad_field"].value, "Cantidad")
             costo = parsear_decimal(linea["costo_field"].value, "Costo unitario")
-            if linea["tipo_dropdown"].value == TIPO_LIBRE:
+            tipo = linea["tipo_dropdown"].value
+            if tipo == TIPO_LIBRE:
                 items.append({"producto_id": None, "producto_nuevo": None,
                               "descripcion_libre": (linea["descripcion_field"].value or "").strip(),
                               "cantidad_recibida": cantidad, "costo_unitario": costo})
+            elif tipo == TIPO_NUEVO:
+                items.append({"producto_id": None, "producto_nuevo": construir_producto_nuevo_pedido(linea),
+                              "descripcion_libre": None, "cantidad_recibida": cantidad, "costo_unitario": costo})
             else:
                 items.append({"producto_id": int(linea["producto_dropdown"].value), "producto_nuevo": None,
                               "descripcion_libre": None, "cantidad_recibida": cantidad, "costo_unitario": costo})

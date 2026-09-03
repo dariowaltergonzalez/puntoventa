@@ -5,6 +5,7 @@ from decimal import Decimal
 from app.repositories import ordenes_compra_repo, productos_repo, recepciones_repo
 from app.services import log_service, proveedores_service, recepciones_service
 from app.services.exceptions import (
+    CodigoDuplicadoError,
     LineasVaciasError,
     OrdenCompraCanceladaError,
     OrdenCompraNoEditableError,
@@ -32,18 +33,31 @@ def _resolver_proveedor(
     return proveedores_service.obtener_o_crear_proveedor_por_nombre(nombre)
 
 
-def _validar_items(items: list[dict]) -> list[dict]:
-    """items de la OC (lo pedido): {'producto_id': int|None, 'descripcion_libre': str|None,
-    'cantidad_pedida': Decimal, 'costo_pactado': Decimal}. Exactamente uno de producto_id/descripcion_libre."""
+def _validar_items(items: list[dict], permitir_producto_nuevo: bool = False) -> list[dict]:
+    """items de la OC (lo pedido): {'producto_id': int|None, 'producto_nuevo': dict|None,
+    'descripcion_libre': str|None, 'cantidad_pedida': Decimal, 'costo_pactado': Decimal}.
+    Exactamente uno de producto_id/producto_nuevo/descripcion_libre.
+
+    'producto_nuevo' solo se permite cuando la orden se recibe en el acto (permitir_producto_nuevo=True):
+    en una OC comun (pendiente, sin recibir) no tiene sentido dar de alta un producto que todavia no llego."""
     if not items:
         raise LineasVaciasError("La orden de compra debe tener al menos una linea")
 
     items_validados = []
     for item in items:
         producto_id = item.get("producto_id")
+        producto_nuevo = item.get("producto_nuevo")
         descripcion_libre = (item.get("descripcion_libre") or "").strip() or None
-        if (producto_id is None) == (descripcion_libre is None):
-            raise ValueError("Cada linea debe tener producto_id o descripcion_libre, pero no ambos ni ninguno")
+
+        cargados = sum(x is not None for x in (producto_id, producto_nuevo, descripcion_libre))
+        if cargados != 1:
+            raise ValueError("Cada linea debe tener producto_id, producto_nuevo o descripcion_libre (una sola opcion)")
+
+        if producto_nuevo is not None and not permitir_producto_nuevo:
+            raise ValueError(
+                "Solo se puede dar de alta un producto nuevo si la orden se recibe en el acto "
+                "('ya la tenes en mano'). Marca esa opcion, o usa un producto existente o item libre."
+            )
 
         if producto_id is not None:
             producto = productos_repo.obtener_por_id(producto_id)
@@ -51,6 +65,14 @@ def _validar_items(items: list[dict]) -> list[dict]:
                 raise ProductoNoEncontradoError(f"No existe el producto {producto_id}")
             if not producto["activo"]:
                 raise ProductoInactivoError(f"El producto '{producto['nombre']}' esta inactivo")
+        elif producto_nuevo is not None:
+            codigo = (producto_nuevo.get("codigo") or "").strip()
+            nombre = (producto_nuevo.get("nombre") or "").strip()
+            if not codigo or not nombre:
+                raise ValueError("Los productos nuevos requieren codigo y nombre")
+            if productos_repo.obtener_por_codigo(codigo) is not None:
+                raise CodigoDuplicadoError(f"Ya existe un producto con el codigo '{codigo}'")
+            producto_nuevo = {"codigo": codigo, "nombre": nombre, "categoria_id": producto_nuevo.get("categoria_id")}
 
         if item["cantidad_pedida"] <= 0:
             raise ValueError("La cantidad pedida debe ser mayor a cero")
@@ -59,6 +81,7 @@ def _validar_items(items: list[dict]) -> list[dict]:
 
         items_validados.append({
             "producto_id": producto_id,
+            "producto_nuevo": producto_nuevo,
             "descripcion_libre": descripcion_libre,
             "cantidad_pedida": cantidad_a_entero(item["cantidad_pedida"]),
             "costo_pactado": precio_a_entero(item["costo_pactado"]),
@@ -109,7 +132,7 @@ def crear_orden_compra_recibida(
     """Checkbox '¿ya la tenes en mano?'. Misma validacion que crear_orden_compra +
     confirmar_recepcion, pero la persistencia va toda en un solo commit."""
     proveedor = _resolver_proveedor(proveedor_id, proveedor_nombre_nuevo, usar_proveedor_generico)
-    items_validados = _validar_items(items)
+    items_validados = _validar_items(items, permitir_producto_nuevo=True)
     items_recepcion_validados = recepciones_service.validar_items_recepcion(recepcion_items)
 
     resultado = ordenes_compra_repo.crear_con_recepcion_inmediata(

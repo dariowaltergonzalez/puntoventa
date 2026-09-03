@@ -70,10 +70,27 @@ def crear_con_recepcion_inmediata(
 
     `items_recepcion` debe tener la MISMA cantidad de lineas que `items`, en el mismo orden
     (son las mismas lineas pre-pobladas, con la cantidad recibida editable) -- se vinculan
-    automaticamente por posicion a las orden_compra_items recien creadas."""
+    automaticamente por posicion a las orden_compra_items recien creadas.
+
+    Una linea puede traer `producto_nuevo` (en vez de producto_id/descripcion_libre): como la
+    recepcion es inmediata, el producto se da de alta aca mismo, antes de crear la orden_compra_item,
+    y se usa su id tanto para la linea pedida como para la de recepcion."""
     conn = get_connection()
     try:
         conn.execute("BEGIN IMMEDIATE")
+
+        productos_creados_al_pedir: list[int] = []
+        for item, item_recepcion in zip(items, items_recepcion):
+            if item.get("producto_nuevo") is not None:
+                producto_id = recepciones_repo.crear_producto_minimo(
+                    conn, item["producto_nuevo"], item["costo_pactado"], proveedor_id
+                )
+                productos_creados_al_pedir.append(producto_id)
+                item["producto_id"] = producto_id
+                item["producto_nuevo"] = None
+                item_recepcion["producto_id"] = producto_id
+                item_recepcion["producto_nuevo"] = None
+
         oc = crear(
             proveedor_id, fecha_creacion, fecha_estimada, iva_porcentaje, observacion,
             items, estado="pendiente", conn=conn,
@@ -87,6 +104,7 @@ def crear_con_recepcion_inmediata(
         resultado = recepciones_repo.aplicar_recepcion(
             conn, oc["id"], recepcion_fecha, recepcion_numero_remito, recepcion_observacion, items_recepcion
         )
+        resultado["productos_creados"] = productos_creados_al_pedir + resultado["productos_creados"]
         conn.commit()
         return {"orden_compra_id": oc["id"], "numero": oc["numero"], **resultado}
     except Exception:

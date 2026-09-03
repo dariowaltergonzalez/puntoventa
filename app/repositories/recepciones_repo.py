@@ -97,7 +97,7 @@ def aplicar_recepcion(
 
         producto_id = item.get("producto_id")
         if producto_id is None:
-            producto_id = _crear_producto_minimo(conn, item["producto_nuevo"], costo_unitario, proveedor_id_oc)
+            producto_id = crear_producto_minimo(conn, item["producto_nuevo"], costo_unitario, proveedor_id_oc)
             productos_creados.append(producto_id)
 
         cursor_lote = conn.execute(
@@ -149,7 +149,7 @@ def aplicar_recepcion(
     }
 
 
-def _crear_producto_minimo(conn: sqlite3.Connection, datos: dict, costo_unitario: int, proveedor_id: int | None) -> int:
+def crear_producto_minimo(conn: sqlite3.Connection, datos: dict, costo_unitario: int, proveedor_id: int | None) -> int:
     categoria_id = datos.get("categoria_id")
     if categoria_id is None:
         categoria_id = _obtener_o_crear_categoria_placeholder(conn)
