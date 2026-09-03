@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime
 from decimal import Decimal
 
-from app.repositories import ordenes_compra_repo, productos_repo
+from app.repositories import ordenes_compra_repo, productos_repo, recepciones_repo
 from app.services import log_service, proveedores_service, recepciones_service
 from app.services.exceptions import (
     LineasVaciasError,
@@ -211,6 +211,26 @@ def _item_a_dict(fila: sqlite3.Row) -> dict:
     }
 
 
+def _costos_reales_por_item(orden_compra_id: int) -> dict[int, Decimal]:
+    """Costo real promedio ponderado por orden_compra_item_id, a partir de todas las
+    recepciones de esta OC (una linea puede haberse recibido en mas de una tanda a
+    costos distintos). Devuelve solo los items que ya recibieron algo."""
+    filas = recepciones_repo.listar_items_por_orden_compra(orden_compra_id)
+    cantidad_por_item: dict[int, Decimal] = {}
+    monto_por_item: dict[int, Decimal] = {}
+    for fila in filas:
+        item_id = fila["orden_compra_item_id"]
+        cantidad = entero_a_cantidad(fila["cantidad_recibida"])
+        costo = entero_a_precio(fila["costo_unitario"])
+        cantidad_por_item[item_id] = cantidad_por_item.get(item_id, Decimal("0")) + cantidad
+        monto_por_item[item_id] = monto_por_item.get(item_id, Decimal("0")) + cantidad * costo
+    return {
+        item_id: (monto_por_item[item_id] / cantidad_por_item[item_id])
+        for item_id in cantidad_por_item
+        if cantidad_por_item[item_id] > 0
+    }
+
+
 def _oc_a_dict(fila: sqlite3.Row, items: list[dict]) -> dict:
     total_estimado = sum((i["cantidad_pedida"] * i["costo_pactado"] for i in items), Decimal("0"))
     return {
@@ -232,6 +252,9 @@ def obtener_orden_compra(orden_compra_id: int) -> dict | None:
     if fila is None:
         return None
     items = [_item_a_dict(f) for f in ordenes_compra_repo.listar_items(orden_compra_id)]
+    costos_reales = _costos_reales_por_item(orden_compra_id)
+    for item in items:
+        item["costo_real_promedio"] = costos_reales.get(item["id"])
     return _oc_a_dict(fila, items)
 
 

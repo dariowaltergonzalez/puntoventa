@@ -249,6 +249,17 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         proveedor = proveedores_service.obtener_proveedor(proveedor_id)
         return proveedor["nombre"] if proveedor else "?"
 
+    def costo_real_texto(item: dict) -> ft.Text:
+        costo_real = item["costo_real_promedio"]
+        if costo_real is None:
+            return ft.Text("-")
+        difiere = costo_real != item["costo_pactado"]
+        return ft.Text(
+            formatear_precio(costo_real),
+            color=ft.Colors.ORANGE if difiere else None,
+            weight=ft.FontWeight.BOLD if difiere else None,
+        )
+
     def construir_fila_oc(oc: dict) -> ft.ExpansionTile:
         valores = [
             oc["numero"],
@@ -266,13 +277,14 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         )
         items_tabla = ft.DataTable(
             columns=[ft.DataColumn(ft.Text(t)) for t in
-                     ["Producto / Descripcion", "Cant. pedida", "Costo pactado", "Cant. recibida"]],
+                     ["Producto / Descripcion", "Cant. pedida", "Costo pactado", "Cant. recibida", "Costo real (prom.)"]],
             rows=[
                 ft.DataRow(cells=[
                     ft.DataCell(ft.Text(item["descripcion_libre"] or f"{item['producto_codigo']} - {item['producto_nombre']}")),
                     ft.DataCell(ft.Text(formatear_cantidad(item["cantidad_pedida"]))),
                     ft.DataCell(ft.Text(formatear_precio(item["costo_pactado"]))),
                     ft.DataCell(ft.Text(formatear_cantidad(item["cantidad_recibida"]))),
+                    ft.DataCell(costo_real_texto(item)),
                 ])
                 for item in oc["items"]
             ],
@@ -471,7 +483,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     detalle_info = ft.Text("")
     tabla_items_oc = ft.DataTable(
         columns=[ft.DataColumn(ft.Text(t)) for t in
-                 ["Producto / Descripcion", "Cant. pedida", "Costo pactado", "Cant. recibida", ""]],
+                 ["Producto / Descripcion", "Cant. pedida", "Costo pactado", "Cant. recibida", "Costo real (prom.)", ""]],
         rows=[],
     )
     tabla_recepciones = ft.DataTable(
@@ -539,6 +551,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                         color=ft.Colors.ORANGE if recibida_excede else None,
                         weight=ft.FontWeight.BOLD if recibida_excede else None,
                     )),
+                    ft.DataCell(costo_real_texto(item)),
                     ft.DataCell(ft.Text("")),
                 ])
             )

@@ -224,3 +224,22 @@ def listar_por_orden(orden_compra_id: int) -> list[sqlite3.Row]:
         ).fetchall()
     finally:
         conn.close()
+
+
+def listar_items_por_orden_compra(orden_compra_id: int) -> list[sqlite3.Row]:
+    """Todas las lineas de TODAS las recepciones de esta OC (de cualquier recepcion),
+    para poder calcular el costo real pagado por cada linea pedida (una linea puede
+    haberse recibido en mas de una tanda, a costos distintos)."""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT ri.*
+            FROM recepcion_items ri
+            JOIN recepciones r ON r.id = ri.recepcion_id
+            WHERE r.orden_compra_id = ? AND ri.orden_compra_item_id IS NOT NULL
+            """,
+            (orden_compra_id,),
+        ).fetchall()
+    finally:
+        conn.close()
