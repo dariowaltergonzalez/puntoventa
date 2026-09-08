@@ -217,3 +217,118 @@ def _migrar(conn: sqlite3.Connection) -> None:
             "ALTER TABLE movimientos ADD COLUMN precio_unitario INTEGER "
             "CHECK (precio_unitario IS NULL OR precio_unitario >= 0)"
         )
+
+    # Fase 2: Clientes + listas de precios
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS clientes (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            razon_social            TEXT NOT NULL UNIQUE,
+            nombre_fantasia         TEXT,
+            dni                     TEXT,
+            cuit                    TEXT,
+            contacto_principal      TEXT,
+            telefono                TEXT,
+            email                   TEXT,
+            direccion               TEXT,
+            ciudad                  TEXT,
+            provincia               TEXT,
+            codigo_postal           TEXT,
+            condicion_iva           TEXT,
+            plazo_pago_dias         INTEGER,
+            porcentaje_descuento    INTEGER,
+            limite_credito          INTEGER,
+            modo_limite_credito     TEXT,
+            tasa_interes_mora_diaria INTEGER,
+            observacion             TEXT,
+            activo                  INTEGER NOT NULL DEFAULT 1,
+            CHECK (activo IN (0, 1)),
+            CHECK (plazo_pago_dias IS NULL OR plazo_pago_dias >= 0),
+            CHECK (limite_credito IS NULL OR limite_credito >= 0),
+            CHECK (modo_limite_credito IS NULL OR modo_limite_credito IN ('bloquear', 'avisar'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cliente_contactos (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id     INTEGER NOT NULL,
+            nombre         TEXT NOT NULL,
+            email          TEXT,
+            telefono       TEXT,
+            sector         TEXT,
+            es_principal   INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            CHECK (es_principal IN (0, 1))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS listas_precios (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre              TEXT NOT NULL UNIQUE,
+            porcentaje_general  INTEGER,
+            activo              INTEGER NOT NULL DEFAULT 1,
+            CHECK (activo IN (0, 1))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS listas_precios_categorias (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            lista_precio_id  INTEGER NOT NULL,
+            categoria_id     INTEGER NOT NULL,
+            porcentaje       INTEGER NOT NULL,
+            FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (categoria_id) REFERENCES categorias (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            UNIQUE (lista_precio_id, categoria_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS listas_precios_productos (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            lista_precio_id  INTEGER NOT NULL,
+            producto_id      INTEGER NOT NULL,
+            precio_manual    INTEGER NOT NULL,
+            FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            CHECK (precio_manual >= 0),
+            UNIQUE (lista_precio_id, producto_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cliente_listas_precios (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id       INTEGER NOT NULL,
+            lista_precio_id  INTEGER NOT NULL,
+            prioridad        INTEGER NOT NULL,
+            FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            UNIQUE (cliente_id, lista_precio_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cliente_contactos_cliente_id ON cliente_contactos (cliente_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_listas_precios_categorias_lista_id "
+        "ON listas_precios_categorias (lista_precio_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_listas_precios_productos_lista_id "
+        "ON listas_precios_productos (lista_precio_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_listas_precios_productos_producto_id "
+        "ON listas_precios_productos (producto_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cliente_listas_precios_cliente_id "
+        "ON cliente_listas_precios (cliente_id)"
+    )

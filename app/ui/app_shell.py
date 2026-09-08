@@ -1,6 +1,8 @@
 import flet as ft
 
 from app.ui.categorias_view import CategoriasView
+from app.ui.clientes_view import ClientesView
+from app.ui.listas_precios_view import ListasPreciosView
 from app.ui.log_view import LogView
 from app.ui.movimientos_view import MovimientosView
 from app.ui.ordenes_compra_view import OrdenesCompraView
@@ -15,6 +17,8 @@ GRUPOS_MENU = [
         ("Categorias", ft.Icons.CATEGORY, CategoriasView),
         ("Productos", ft.Icons.INVENTORY_2, ProductosView),
         ("Proveedores", ft.Icons.LOCAL_SHIPPING, ProveedoresView),
+        ("Clientes", ft.Icons.PEOPLE, ClientesView),
+        ("Listas de precios", ft.Icons.SELL, ListasPreciosView),
     ]),
     ("Operaciones", [
         ("Compras", ft.Icons.SHOPPING_CART, OrdenesCompraView),

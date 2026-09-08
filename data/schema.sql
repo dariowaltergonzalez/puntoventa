@@ -197,6 +197,106 @@ CREATE INDEX IF NOT EXISTS idx_ordenes_compra_proveedor_id ON ordenes_compra (pr
 CREATE INDEX IF NOT EXISTS idx_ordenes_compra_estado ON ordenes_compra (estado);
 CREATE INDEX IF NOT EXISTS idx_orden_compra_items_oc_id ON orden_compra_items (orden_compra_id);
 CREATE INDEX IF NOT EXISTS idx_orden_compra_items_producto_id ON orden_compra_items (producto_id);
+
+-- Fase 2: Clientes + listas de precios
+
+CREATE TABLE IF NOT EXISTS clientes (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    razon_social            TEXT NOT NULL UNIQUE,
+    nombre_fantasia         TEXT,
+    dni                     TEXT,
+    cuit                    TEXT,
+    contacto_principal      TEXT,
+    telefono                TEXT,
+    email                   TEXT,
+    direccion               TEXT,
+    ciudad                  TEXT,
+    provincia               TEXT,
+    codigo_postal           TEXT,
+    condicion_iva           TEXT,
+    plazo_pago_dias         INTEGER,                 -- nullable: sin plazo habitual definido
+    porcentaje_descuento    INTEGER,                 -- escalado x100, nullable: sin descuento
+    limite_credito          INTEGER,                 -- escalado x100, nullable: sin limite
+    modo_limite_credito     TEXT,                    -- 'bloquear' | 'avisar', nullable si no hay limite
+    tasa_interes_mora_diaria INTEGER,                -- escalado x100 (% diario), nullable: sin mora
+    observacion             TEXT,
+    activo                  INTEGER NOT NULL DEFAULT 1,
+    CHECK (activo IN (0, 1)),
+    CHECK (plazo_pago_dias IS NULL OR plazo_pago_dias >= 0),
+    CHECK (limite_credito IS NULL OR limite_credito >= 0),
+    CHECK (modo_limite_credito IS NULL OR modo_limite_credito IN ('bloquear', 'avisar'))
+);
+
+CREATE TABLE IF NOT EXISTS cliente_contactos (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id     INTEGER NOT NULL,
+    nombre         TEXT NOT NULL,
+    email          TEXT,
+    telefono       TEXT,
+    sector         TEXT,                             -- ej. 'Compras', 'Deposito'; opcional
+    es_principal   INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (cliente_id) REFERENCES clientes (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    CHECK (es_principal IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS listas_precios (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre              TEXT NOT NULL UNIQUE,
+    porcentaje_general  INTEGER,                     -- escalado x100, nullable: sin % general cargado
+    activo              INTEGER NOT NULL DEFAULT 1,
+    CHECK (activo IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS listas_precios_categorias (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    lista_precio_id  INTEGER NOT NULL,
+    categoria_id     INTEGER NOT NULL,
+    porcentaje       INTEGER NOT NULL,                -- escalado x100
+    FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (categoria_id) REFERENCES categorias (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    UNIQUE (lista_precio_id, categoria_id)
+);
+
+CREATE TABLE IF NOT EXISTS listas_precios_productos (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    lista_precio_id  INTEGER NOT NULL,
+    producto_id      INTEGER NOT NULL,
+    precio_manual    INTEGER NOT NULL,                -- escalado x100, precio absoluto (no porcentaje)
+    FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (producto_id) REFERENCES productos (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CHECK (precio_manual >= 0),
+    UNIQUE (lista_precio_id, producto_id)
+);
+
+CREATE TABLE IF NOT EXISTS cliente_listas_precios (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id       INTEGER NOT NULL,
+    lista_precio_id  INTEGER NOT NULL,
+    prioridad        INTEGER NOT NULL,                -- menor numero = mayor prioridad (se sugiere primero)
+    FOREIGN KEY (cliente_id) REFERENCES clientes (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    UNIQUE (cliente_id, lista_precio_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cliente_contactos_cliente_id ON cliente_contactos (cliente_id);
+CREATE INDEX IF NOT EXISTS idx_listas_precios_categorias_lista_id ON listas_precios_categorias (lista_precio_id);
+CREATE INDEX IF NOT EXISTS idx_listas_precios_productos_lista_id ON listas_precios_productos (lista_precio_id);
+CREATE INDEX IF NOT EXISTS idx_listas_precios_productos_producto_id ON listas_precios_productos (producto_id);
+CREATE INDEX IF NOT EXISTS idx_cliente_listas_precios_cliente_id ON cliente_listas_precios (cliente_id);
 CREATE INDEX IF NOT EXISTS idx_recepciones_oc_id ON recepciones (orden_compra_id);
 CREATE INDEX IF NOT EXISTS idx_recepciones_fecha ON recepciones (fecha);
 CREATE INDEX IF NOT EXISTS idx_recepcion_items_recepcion_id ON recepcion_items (recepcion_id);

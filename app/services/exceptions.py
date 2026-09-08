@@ -48,3 +48,19 @@ class OrdenCompraCanceladaError(Exception):
 
 class OrdenCompraNoEditableError(Exception):
     pass
+
+
+class ClienteDuplicadoError(Exception):
+    pass
+
+
+class ClienteNoEncontradoError(Exception):
+    pass
+
+
+class ListaPrecioDuplicadaError(Exception):
+    pass
+
+
+class ListaPrecioNoEncontradaError(Exception):
+    pass
