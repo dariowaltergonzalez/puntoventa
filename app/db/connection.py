@@ -255,8 +255,7 @@ def _migrar(conn: sqlite3.Connection) -> None:
     if "avisar_limite_credito" not in columnas_clientes:
         # Reemplaza al viejo 'modo_limite_credito' (columna unica bloquear/avisar mutuamente
         # excluyente) por dos flags independientes: un cliente puede querer avisar y no bloquear,
-        # bloquear y no avisar, ambos, o ninguno. La columna vieja queda sin usar (no se puede
-        # borrar una columna existente sin reconstruir la tabla).
+        # bloquear y no avisar, ambos, o ninguno.
         conn.execute(
             "ALTER TABLE clientes ADD COLUMN avisar_limite_credito INTEGER NOT NULL DEFAULT 0 "
             "CHECK (avisar_limite_credito IN (0, 1))"
@@ -266,6 +265,62 @@ def _migrar(conn: sqlite3.Connection) -> None:
             "ALTER TABLE clientes ADD COLUMN bloquear_limite_credito INTEGER NOT NULL DEFAULT 0 "
             "CHECK (bloquear_limite_credito IN (0, 1))"
         )
+    if "modo_limite_credito" in columnas_clientes:
+        # Todavia en desarrollo, sin datos reales de negocio en juego: se reconstruye la tabla
+        # para sacar del todo la columna vieja en vez de dejarla huerfana. SQLite no permite
+        # DROP COLUMN si hay un CHECK que la referencia, asi que se recrea la tabla completa
+        # (patron recomendado por SQLite para este caso).
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE clientes RENAME TO clientes_old_modo_limite")
+        conn.execute(
+            """
+            CREATE TABLE clientes (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                razon_social            TEXT NOT NULL UNIQUE,
+                nombre_fantasia         TEXT,
+                dni                     TEXT,
+                cuit                    TEXT,
+                contacto_principal      TEXT,
+                telefono                TEXT,
+                email                   TEXT,
+                direccion               TEXT,
+                ciudad                  TEXT,
+                provincia               TEXT,
+                codigo_postal           TEXT,
+                condicion_iva           TEXT,
+                plazo_pago_dias         INTEGER,
+                porcentaje_descuento    INTEGER,
+                limite_credito          INTEGER,
+                avisar_limite_credito   INTEGER NOT NULL DEFAULT 0,
+                bloquear_limite_credito INTEGER NOT NULL DEFAULT 0,
+                tasa_interes_mora_diaria INTEGER,
+                observacion             TEXT,
+                activo                  INTEGER NOT NULL DEFAULT 1,
+                CHECK (activo IN (0, 1)),
+                CHECK (plazo_pago_dias IS NULL OR plazo_pago_dias >= 0),
+                CHECK (limite_credito IS NULL OR limite_credito >= 0),
+                CHECK (avisar_limite_credito IN (0, 1)),
+                CHECK (bloquear_limite_credito IN (0, 1))
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO clientes
+                (id, razon_social, nombre_fantasia, dni, cuit, contacto_principal, telefono, email,
+                 direccion, ciudad, provincia, codigo_postal, condicion_iva, plazo_pago_dias,
+                 porcentaje_descuento, limite_credito, avisar_limite_credito, bloquear_limite_credito,
+                 tasa_interes_mora_diaria, observacion, activo)
+            SELECT
+                id, razon_social, nombre_fantasia, dni, cuit, contacto_principal, telefono, email,
+                direccion, ciudad, provincia, codigo_postal, condicion_iva, plazo_pago_dias,
+                porcentaje_descuento, limite_credito, avisar_limite_credito, bloquear_limite_credito,
+                tasa_interes_mora_diaria, observacion, activo
+            FROM clientes_old_modo_limite
+            """
+        )
+        conn.execute("DROP TABLE clientes_old_modo_limite")
+        conn.execute("PRAGMA foreign_keys = ON")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS cliente_contactos (
