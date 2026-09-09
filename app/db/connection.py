@@ -289,6 +289,15 @@ def _migrar(conn: sqlite3.Connection) -> None:
         # para sacar del todo la columna vieja en vez de dejarla huerfana. SQLite no permite
         # DROP COLUMN si hay un CHECK que la referencia, asi que se recrea la tabla completa
         # (patron recomendado por SQLite para este caso).
+        #
+        # OJO: por defecto, "ALTER TABLE x RENAME TO y" hace que SQLite reescriba automaticamente
+        # las FOREIGN KEY de OTRAS tablas que apuntaban a "x" para que ahora apunten a "y" --
+        # asi que cliente_contactos/cliente_listas_precios (que referencian clientes) quedarian
+        # apuntando a "clientes_old_modo_limite" y se rompen en cuanto esa tabla se borra mas
+        # abajo. legacy_alter_table=ON desactiva esa reescritura automatica (mismo comportamiento
+        # que SQLite < 3.25), que es lo que queremos aca porque la tabla "clientes" se vuelve a
+        # crear con ese mismo nombre al final.
+        conn.execute("PRAGMA legacy_alter_table = ON")
         conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("ALTER TABLE clientes RENAME TO clientes_old_modo_limite")
         conn.execute(
@@ -340,6 +349,7 @@ def _migrar(conn: sqlite3.Connection) -> None:
         )
         conn.execute("DROP TABLE clientes_old_modo_limite")
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA legacy_alter_table = OFF")
 
     columnas_clientes = {fila["name"] for fila in conn.execute("PRAGMA table_info(clientes)")}
     if "condicion_iva" in columnas_clientes:
@@ -348,6 +358,9 @@ def _migrar(conn: sqlite3.Connection) -> None:
         # mismo criterio que el rebuild de arriba: se reconstruye la tabla en vez de dejar la
         # columna vieja sin usar. Si habia texto cargado que coincide con el nombre de una
         # condicion existente, se conserva la referencia; si no matchea nada, queda NULL.
+        # legacy_alter_table=ON: ver comentario largo en el rebuild de arriba (evita que SQLite
+        # reescriba las FK de cliente_contactos/cliente_listas_precios).
+        conn.execute("PRAGMA legacy_alter_table = ON")
         conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("ALTER TABLE clientes RENAME TO clientes_old_condicion_iva")
         conn.execute(
@@ -402,6 +415,72 @@ def _migrar(conn: sqlite3.Connection) -> None:
             """
         )
         conn.execute("DROP TABLE clientes_old_condicion_iva")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA legacy_alter_table = OFF")
+
+    # Reparacion puntual: las dos reconstrucciones de arriba (antes de agregar legacy_alter_table)
+    # ya le rompieron la FK a estas dos tablas en instalaciones existentes -- quedaron apuntando
+    # a "clientes_old_modo_limite", una tabla que ya no existe. Estan vacias (0 filas siempre,
+    # son solo datos auxiliares de un cliente), asi que se recrean directo con la FK correcta.
+    def _fk_referencia(tabla: str, columna: str) -> str | None:
+        for fila in conn.execute(f"PRAGMA foreign_key_list({tabla})"):
+            if fila["from"] == columna:
+                return fila["table"]
+        return None
+
+    if _fk_referencia("cliente_contactos", "cliente_id") == "clientes_old_modo_limite":
+        conn.execute("PRAGMA foreign_keys = OFF")
+        filas_existentes = conn.execute("SELECT * FROM cliente_contactos").fetchall()
+        conn.execute("DROP TABLE cliente_contactos")
+        conn.execute(
+            """
+            CREATE TABLE cliente_contactos (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id     INTEGER NOT NULL,
+                nombre         TEXT NOT NULL,
+                email          TEXT,
+                telefono       TEXT,
+                sector         TEXT,
+                es_principal   INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+                CHECK (es_principal IN (0, 1))
+            )
+            """
+        )
+        for f in filas_existentes:
+            conn.execute(
+                "INSERT INTO cliente_contactos (id, cliente_id, nombre, email, telefono, sector, es_principal) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (f["id"], f["cliente_id"], f["nombre"], f["email"], f["telefono"], f["sector"], f["es_principal"]),
+            )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cliente_contactos_cliente_id ON cliente_contactos (cliente_id)")
+        conn.execute("PRAGMA foreign_keys = ON")
+
+    if _fk_referencia("cliente_listas_precios", "cliente_id") == "clientes_old_modo_limite":
+        conn.execute("PRAGMA foreign_keys = OFF")
+        filas_existentes = conn.execute("SELECT * FROM cliente_listas_precios").fetchall()
+        conn.execute("DROP TABLE cliente_listas_precios")
+        conn.execute(
+            """
+            CREATE TABLE cliente_listas_precios (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id       INTEGER NOT NULL,
+                lista_precio_id  INTEGER NOT NULL,
+                prioridad        INTEGER NOT NULL,
+                FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+                FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id) ON DELETE CASCADE ON UPDATE CASCADE,
+                UNIQUE (cliente_id, lista_precio_id)
+            )
+            """
+        )
+        for f in filas_existentes:
+            conn.execute(
+                "INSERT INTO cliente_listas_precios (id, cliente_id, lista_precio_id, prioridad) VALUES (?, ?, ?, ?)",
+                (f["id"], f["cliente_id"], f["lista_precio_id"], f["prioridad"]),
+            )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cliente_listas_precios_cliente_id ON cliente_listas_precios (cliente_id)"
+        )
         conn.execute("PRAGMA foreign_keys = ON")
 
     conn.execute(
