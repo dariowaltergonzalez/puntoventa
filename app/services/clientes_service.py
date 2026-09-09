@@ -13,11 +13,9 @@ from app.shared.money import entero_a_porcentaje, entero_a_precio, porcentaje_a_
 _CAMPOS_LOG = [
     "razon_social", "nombre_fantasia", "dni", "cuit", "contacto_principal", "telefono", "email",
     "direccion", "ciudad", "provincia", "codigo_postal", "condicion_iva", "plazo_pago_dias",
-    "porcentaje_descuento", "limite_credito", "modo_limite_credito", "tasa_interes_mora_diaria",
-    "observacion", "activo",
+    "porcentaje_descuento", "limite_credito", "avisar_limite_credito", "bloquear_limite_credito",
+    "tasa_interes_mora_diaria", "observacion", "activo",
 ]
-
-MODOS_LIMITE_CREDITO = ("bloquear", "avisar")
 
 
 def _texto_o_none(valor: str | None) -> str | None:
@@ -43,7 +41,8 @@ def _a_dict(fila: sqlite3.Row) -> dict:
         "plazo_pago_dias": fila["plazo_pago_dias"],
         "porcentaje_descuento": entero_a_porcentaje(fila["porcentaje_descuento"]) if fila["porcentaje_descuento"] is not None else None,
         "limite_credito": entero_a_precio(fila["limite_credito"]) if fila["limite_credito"] is not None else None,
-        "modo_limite_credito": fila["modo_limite_credito"],
+        "avisar_limite_credito": bool(fila["avisar_limite_credito"]),
+        "bloquear_limite_credito": bool(fila["bloquear_limite_credito"]),
         "tasa_interes_mora_diaria": entero_a_porcentaje(fila["tasa_interes_mora_diaria"]) if fila["tasa_interes_mora_diaria"] is not None else None,
         "observacion": fila["observacion"],
         "activo": bool(fila["activo"]),
@@ -62,14 +61,16 @@ def _contacto_a_dict(fila: sqlite3.Row) -> dict:
     }
 
 
-def _validar_limite_credito(limite_credito: Decimal | None, modo_limite_credito: str | None) -> tuple[int | None, str | None]:
+def _validar_limite_credito(
+    limite_credito: Decimal | None, avisar: bool, bloquear: bool,
+) -> tuple[int | None, bool, bool]:
     if limite_credito is None:
-        return None, None
+        if avisar or bloquear:
+            raise ValueError("Para avisar o bloquear al superar un limite, primero hay que cargar el limite de credito")
+        return None, False, False
     if limite_credito < 0:
         raise ValueError("El limite de credito no puede ser negativo")
-    if modo_limite_credito not in MODOS_LIMITE_CREDITO:
-        raise ValueError(f"El modo de limite de credito debe ser uno de {MODOS_LIMITE_CREDITO}")
-    return precio_a_entero(limite_credito), modo_limite_credito
+    return precio_a_entero(limite_credito), avisar, bloquear
 
 
 def crear_cliente(
@@ -88,7 +89,8 @@ def crear_cliente(
     plazo_pago_dias: int | None = None,
     porcentaje_descuento: Decimal | None = None,
     limite_credito: Decimal | None = None,
-    modo_limite_credito: str | None = None,
+    avisar_limite_credito: bool = False,
+    bloquear_limite_credito: bool = False,
     tasa_interes_mora_diaria: Decimal | None = None,
     observacion: str | None = None,
 ) -> dict:
@@ -98,7 +100,9 @@ def crear_cliente(
     if plazo_pago_dias is not None and plazo_pago_dias < 0:
         raise ValueError("El plazo de pago no puede ser negativo")
 
-    limite_entero, modo_limite = _validar_limite_credito(limite_credito, modo_limite_credito)
+    limite_entero, avisar, bloquear = _validar_limite_credito(
+        limite_credito, avisar_limite_credito, bloquear_limite_credito,
+    )
 
     try:
         cliente_id = clientes_repo.crear(
@@ -117,7 +121,8 @@ def crear_cliente(
             plazo_pago_dias=plazo_pago_dias,
             porcentaje_descuento=porcentaje_a_entero(porcentaje_descuento) if porcentaje_descuento is not None else None,
             limite_credito=limite_entero,
-            modo_limite_credito=modo_limite,
+            avisar_limite_credito=avisar,
+            bloquear_limite_credito=bloquear,
             tasa_interes_mora_diaria=porcentaje_a_entero(tasa_interes_mora_diaria) if tasa_interes_mora_diaria is not None else None,
             observacion=_texto_o_none(observacion),
         )
@@ -145,7 +150,8 @@ def actualizar_cliente(
     plazo_pago_dias: int | None,
     porcentaje_descuento: Decimal | None,
     limite_credito: Decimal | None,
-    modo_limite_credito: str | None,
+    avisar_limite_credito: bool,
+    bloquear_limite_credito: bool,
     tasa_interes_mora_diaria: Decimal | None,
     observacion: str | None,
     activo: bool,
@@ -160,7 +166,9 @@ def actualizar_cliente(
     if antes is None:
         raise ClienteNoEncontradoError(f"No existe el cliente {cliente_id}")
 
-    limite_entero, modo_limite = _validar_limite_credito(limite_credito, modo_limite_credito)
+    limite_entero, avisar, bloquear = _validar_limite_credito(
+        limite_credito, avisar_limite_credito, bloquear_limite_credito,
+    )
 
     try:
         clientes_repo.actualizar(
@@ -180,7 +188,8 @@ def actualizar_cliente(
             plazo_pago_dias=plazo_pago_dias,
             porcentaje_descuento=porcentaje_a_entero(porcentaje_descuento) if porcentaje_descuento is not None else None,
             limite_credito=limite_entero,
-            modo_limite_credito=modo_limite,
+            avisar_limite_credito=avisar,
+            bloquear_limite_credito=bloquear,
             tasa_interes_mora_diaria=porcentaje_a_entero(tasa_interes_mora_diaria) if tasa_interes_mora_diaria is not None else None,
             observacion=_texto_o_none(observacion),
             activo=1 if activo else 0,

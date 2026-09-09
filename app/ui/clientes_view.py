@@ -9,11 +9,16 @@ from app.services.exceptions import (
     ListaPrecioNoEncontradaError,
 )
 from app.shared.money import formatear_precio, formatear_porcentaje
+from app.ui.campos import (
+    FILTRO_CUIT,
+    FILTRO_DECIMALES,
+    FILTRO_ENTEROS,
+    aplicar_mascara_moneda,
+    parsear_decimal_ar_opcional,
+)
 from app.ui.listados import Paginador, coincide_exacto, coincide_texto, filtrar
 
 EXCEPCIONES_NEGOCIO = (ClienteDuplicadoError, ClienteNoEncontradoError, ListaPrecioNoEncontradaError, ValueError)
-
-MODOS_LIMITE = [("bloquear", "Bloquear"), ("avisar", "Solo avisar")]
 
 
 def ClientesView(page: ft.Page) -> ft.Control:
@@ -98,8 +103,8 @@ def ClientesView(page: ft.Page) -> ft.Control:
     form_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
     razon_social_field = ft.TextField(label="Razon social", expand=True)
     nombre_fantasia_field = ft.TextField(label="Nombre de fantasia (opcional)", expand=True)
-    dni_field = ft.TextField(label="DNI (opcional)", width=150)
-    cuit_field = ft.TextField(label="CUIT (opcional)", width=150)
+    dni_field = ft.TextField(label="DNI (opcional)", width=150, input_filter=FILTRO_ENTEROS)
+    cuit_field = ft.TextField(label="CUIT (opcional)", width=150, input_filter=FILTRO_CUIT)
     contacto_principal_field = ft.TextField(label="Contacto principal (opcional)", expand=True)
     telefono_field = ft.TextField(label="Telefono (opcional)", width=180)
     email_field = ft.TextField(label="Email (opcional)", expand=True)
@@ -108,16 +113,16 @@ def ClientesView(page: ft.Page) -> ft.Control:
     provincia_field = ft.TextField(label="Provincia (opcional)", width=180)
     codigo_postal_field = ft.TextField(label="Codigo postal (opcional)", width=140)
     condicion_iva_field = ft.TextField(label="Condicion ante el IVA (opcional)", width=220)
-    plazo_pago_field = ft.TextField(label="Plazo de pago habitual, en dias (opcional)", width=220)
-    porcentaje_descuento_field = ft.TextField(label="% de descuento (opcional)", width=180, hint_text="ej: 10 o -10")
-    limite_credito_field = ft.TextField(label="Limite de credito (opcional)", width=180)
-    modo_limite_dropdown = ft.Dropdown(
-        label="Al superar el limite", width=180,
-        options=[ft.dropdown.Option(key=k, text=t) for k, t in MODOS_LIMITE],
-    )
-    tasa_mora_field = ft.TextField(label="Interes por mora diario % (opcional)", width=220)
+    plazo_pago_field = ft.TextField(label="Plazo de pago habitual, en dias (opcional)", width=220, input_filter=FILTRO_ENTEROS)
+    porcentaje_descuento_field = ft.TextField(label="% de descuento (opcional)", width=180, hint_text="ej: 10", input_filter=FILTRO_DECIMALES)
+    limite_credito_field = ft.TextField(label="Limite de credito (opcional)", width=180, input_filter=FILTRO_DECIMALES)
+    avisar_limite_switch = ft.Switch(label="Avisar al superar el limite", value=False)
+    bloquear_limite_switch = ft.Switch(label="Bloquear al superar el limite", value=False)
+    tasa_mora_field = ft.TextField(label="Interes por mora diario % (opcional)", width=220, input_filter=FILTRO_DECIMALES)
     observacion_field = ft.TextField(label="Observacion (opcional)", expand=True, multiline=True, min_lines=1, max_lines=3)
     activo_switch = ft.Switch(label="Activo", value=True, visible=False)
+
+    aplicar_mascara_moneda(limite_credito_field)
 
     guardar_form_texto = ft.Text("Crear cliente")
     guardar_form_button = ft.ElevatedButton(content=guardar_form_texto)
@@ -133,7 +138,8 @@ def ClientesView(page: ft.Page) -> ft.Control:
                       codigo_postal_field, condicion_iva_field, plazo_pago_field, porcentaje_descuento_field,
                       limite_credito_field, tasa_mora_field, observacion_field):
             campo.value = ""
-        modo_limite_dropdown.value = None
+        avisar_limite_switch.value = False
+        bloquear_limite_switch.value = False
         activo_switch.value = True
         activo_switch.visible = False
         guardar_form_texto.value = "Crear cliente"
@@ -156,8 +162,9 @@ def ClientesView(page: ft.Page) -> ft.Control:
         condicion_iva_field.value = c["condicion_iva"] or ""
         plazo_pago_field.value = str(c["plazo_pago_dias"]) if c["plazo_pago_dias"] is not None else ""
         porcentaje_descuento_field.value = str(c["porcentaje_descuento"]) if c["porcentaje_descuento"] is not None else ""
-        limite_credito_field.value = str(c["limite_credito"]) if c["limite_credito"] is not None else ""
-        modo_limite_dropdown.value = c["modo_limite_credito"]
+        limite_credito_field.value = formatear_precio(c["limite_credito"]) if c["limite_credito"] is not None else ""
+        avisar_limite_switch.value = c["avisar_limite_credito"]
+        bloquear_limite_switch.value = c["bloquear_limite_credito"]
         tasa_mora_field.value = str(c["tasa_interes_mora_diaria"]) if c["tasa_interes_mora_diaria"] is not None else ""
         observacion_field.value = c["observacion"] or ""
         activo_switch.value = c["activo"]
@@ -182,8 +189,9 @@ def ClientesView(page: ft.Page) -> ft.Control:
                 condicion_iva=condicion_iva_field.value,
                 plazo_pago_dias=parsear_entero_opcional(plazo_pago_field.value, "El plazo de pago"),
                 porcentaje_descuento=parsear_decimal_opcional(porcentaje_descuento_field.value, "El % de descuento"),
-                limite_credito=parsear_decimal_opcional(limite_credito_field.value, "El limite de credito"),
-                modo_limite_credito=modo_limite_dropdown.value or None,
+                limite_credito=parsear_decimal_ar_opcional(limite_credito_field.value, "El limite de credito"),
+                avisar_limite_credito=avisar_limite_switch.value,
+                bloquear_limite_credito=bloquear_limite_switch.value,
                 tasa_interes_mora_diaria=parsear_decimal_opcional(tasa_mora_field.value, "La tasa de interes por mora"),
                 observacion=observacion_field.value,
             )
@@ -208,7 +216,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
             ft.Row([telefono_field, email_field]),
             ft.Row([direccion_field, ciudad_field, provincia_field, codigo_postal_field]),
             ft.Row([condicion_iva_field, plazo_pago_field, porcentaje_descuento_field]),
-            ft.Row([limite_credito_field, modo_limite_dropdown, tasa_mora_field]),
+            ft.Row([limite_credito_field, avisar_limite_switch, bloquear_limite_switch, tasa_mora_field]),
             ft.Row([observacion_field]),
             ft.Row([activo_switch]),
             ft.Row([guardar_form_button, cancelar_form_button]),
@@ -315,8 +323,13 @@ def ClientesView(page: ft.Page) -> ft.Control:
         if cliente["porcentaje_descuento"] is not None:
             partes.append(f"Descuento: {formatear_porcentaje(cliente['porcentaje_descuento'])}%")
         if cliente["limite_credito"] is not None:
-            modo = "bloquea" if cliente["modo_limite_credito"] == "bloquear" else "avisa"
-            partes.append(f"Limite de credito: {formatear_precio(cliente['limite_credito'])} ({modo} al superarlo)")
+            comportamiento = []
+            if cliente["avisar_limite_credito"]:
+                comportamiento.append("avisa")
+            if cliente["bloquear_limite_credito"]:
+                comportamiento.append("bloquea")
+            sufijo = f" ({' y '.join(comportamiento)} al superarlo)" if comportamiento else ""
+            partes.append(f"Limite de credito: {formatear_precio(cliente['limite_credito'])}{sufijo}")
         if cliente["tasa_interes_mora_diaria"] is not None:
             partes.append(f"Interes por mora: {formatear_porcentaje(cliente['tasa_interes_mora_diaria'])}% diario")
         detalle_info.value = "   |   ".join(partes)

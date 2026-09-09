@@ -217,14 +217,16 @@ CREATE TABLE IF NOT EXISTS clientes (
     plazo_pago_dias         INTEGER,                 -- nullable: sin plazo habitual definido
     porcentaje_descuento    INTEGER,                 -- escalado x100, nullable: sin descuento
     limite_credito          INTEGER,                 -- escalado x100, nullable: sin limite
-    modo_limite_credito     TEXT,                    -- 'bloquear' | 'avisar', nullable si no hay limite
+    avisar_limite_credito   INTEGER NOT NULL DEFAULT 0,  -- flags independientes: puede avisar sin bloquear,
+    bloquear_limite_credito INTEGER NOT NULL DEFAULT 0,  -- bloquear sin avisar, ambos, o ninguno
     tasa_interes_mora_diaria INTEGER,                -- escalado x100 (% diario), nullable: sin mora
     observacion             TEXT,
     activo                  INTEGER NOT NULL DEFAULT 1,
     CHECK (activo IN (0, 1)),
     CHECK (plazo_pago_dias IS NULL OR plazo_pago_dias >= 0),
     CHECK (limite_credito IS NULL OR limite_credito >= 0),
-    CHECK (modo_limite_credito IS NULL OR modo_limite_credito IN ('bloquear', 'avisar'))
+    CHECK (avisar_limite_credito IN (0, 1)),
+    CHECK (bloquear_limite_credito IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS cliente_contactos (

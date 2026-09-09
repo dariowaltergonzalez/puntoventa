@@ -238,17 +238,34 @@ def _migrar(conn: sqlite3.Connection) -> None:
             plazo_pago_dias         INTEGER,
             porcentaje_descuento    INTEGER,
             limite_credito          INTEGER,
-            modo_limite_credito     TEXT,
+            avisar_limite_credito   INTEGER NOT NULL DEFAULT 0,
+            bloquear_limite_credito INTEGER NOT NULL DEFAULT 0,
             tasa_interes_mora_diaria INTEGER,
             observacion             TEXT,
             activo                  INTEGER NOT NULL DEFAULT 1,
             CHECK (activo IN (0, 1)),
             CHECK (plazo_pago_dias IS NULL OR plazo_pago_dias >= 0),
             CHECK (limite_credito IS NULL OR limite_credito >= 0),
-            CHECK (modo_limite_credito IS NULL OR modo_limite_credito IN ('bloquear', 'avisar'))
+            CHECK (avisar_limite_credito IN (0, 1)),
+            CHECK (bloquear_limite_credito IN (0, 1))
         )
         """
     )
+    columnas_clientes = {fila["name"] for fila in conn.execute("PRAGMA table_info(clientes)")}
+    if "avisar_limite_credito" not in columnas_clientes:
+        # Reemplaza al viejo 'modo_limite_credito' (columna unica bloquear/avisar mutuamente
+        # excluyente) por dos flags independientes: un cliente puede querer avisar y no bloquear,
+        # bloquear y no avisar, ambos, o ninguno. La columna vieja queda sin usar (no se puede
+        # borrar una columna existente sin reconstruir la tabla).
+        conn.execute(
+            "ALTER TABLE clientes ADD COLUMN avisar_limite_credito INTEGER NOT NULL DEFAULT 0 "
+            "CHECK (avisar_limite_credito IN (0, 1))"
+        )
+    if "bloquear_limite_credito" not in columnas_clientes:
+        conn.execute(
+            "ALTER TABLE clientes ADD COLUMN bloquear_limite_credito INTEGER NOT NULL DEFAULT 0 "
+            "CHECK (bloquear_limite_credito IN (0, 1))"
+        )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS cliente_contactos (

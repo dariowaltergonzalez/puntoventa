@@ -19,7 +19,8 @@ def crear(
     plazo_pago_dias: int | None = None,
     porcentaje_descuento: int | None = None,
     limite_credito: int | None = None,
-    modo_limite_credito: str | None = None,
+    avisar_limite_credito: bool = False,
+    bloquear_limite_credito: bool = False,
     tasa_interes_mora_diaria: int | None = None,
     observacion: str | None = None,
 ) -> int:
@@ -30,15 +31,15 @@ def crear(
             INSERT INTO clientes
                 (razon_social, nombre_fantasia, dni, cuit, contacto_principal, telefono, email,
                  direccion, ciudad, provincia, codigo_postal, condicion_iva, plazo_pago_dias,
-                 porcentaje_descuento, limite_credito, modo_limite_credito, tasa_interes_mora_diaria,
-                 observacion, activo)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                 porcentaje_descuento, limite_credito, avisar_limite_credito, bloquear_limite_credito,
+                 tasa_interes_mora_diaria, observacion, activo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             """,
             (
                 razon_social, nombre_fantasia, dni, cuit, contacto_principal, telefono, email,
                 direccion, ciudad, provincia, codigo_postal, condicion_iva, plazo_pago_dias,
-                porcentaje_descuento, limite_credito, modo_limite_credito, tasa_interes_mora_diaria,
-                observacion,
+                porcentaje_descuento, limite_credito, int(avisar_limite_credito), int(bloquear_limite_credito),
+                tasa_interes_mora_diaria, observacion,
             ),
         )
         conn.commit()
@@ -64,7 +65,8 @@ def actualizar(
     plazo_pago_dias: int | None,
     porcentaje_descuento: int | None,
     limite_credito: int | None,
-    modo_limite_credito: str | None,
+    avisar_limite_credito: bool,
+    bloquear_limite_credito: bool,
     tasa_interes_mora_diaria: int | None,
     observacion: str | None,
     activo: int,
@@ -77,14 +79,15 @@ def actualizar(
             SET razon_social = ?, nombre_fantasia = ?, dni = ?, cuit = ?, contacto_principal = ?,
                 telefono = ?, email = ?, direccion = ?, ciudad = ?, provincia = ?, codigo_postal = ?,
                 condicion_iva = ?, plazo_pago_dias = ?, porcentaje_descuento = ?, limite_credito = ?,
-                modo_limite_credito = ?, tasa_interes_mora_diaria = ?, observacion = ?, activo = ?
+                avisar_limite_credito = ?, bloquear_limite_credito = ?, tasa_interes_mora_diaria = ?,
+                observacion = ?, activo = ?
             WHERE id = ?
             """,
             (
                 razon_social, nombre_fantasia, dni, cuit, contacto_principal, telefono, email,
                 direccion, ciudad, provincia, codigo_postal, condicion_iva, plazo_pago_dias,
-                porcentaje_descuento, limite_credito, modo_limite_credito, tasa_interes_mora_diaria,
-                observacion, activo, cliente_id,
+                porcentaje_descuento, limite_credito, int(avisar_limite_credito), int(bloquear_limite_credito),
+                tasa_interes_mora_diaria, observacion, activo, cliente_id,
             ),
         )
         conn.commit()

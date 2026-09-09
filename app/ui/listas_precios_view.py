@@ -10,6 +10,7 @@ from app.services.exceptions import (
     ProductoNoEncontradoError,
 )
 from app.shared.money import formatear_precio, formatear_porcentaje
+from app.ui.campos import FILTRO_DECIMALES_CON_SIGNO, aplicar_mascara_moneda, parsear_decimal_ar_opcional
 
 EXCEPCIONES_NEGOCIO = (
     CategoriaNoEncontradaError, ListaPrecioDuplicadaError, ListaPrecioNoEncontradaError,
@@ -67,6 +68,7 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
     porcentaje_general_field = ft.TextField(
         label="% general (opcional)", width=200,
         hint_text="ej: -15 (descuento) o 15 (recargo)",
+        input_filter=FILTRO_DECIMALES_CON_SIGNO,
     )
     activo_switch = ft.Switch(label="Activa", value=True, visible=False)
     guardar_form_texto = ft.Text("Crear lista")
@@ -132,7 +134,7 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
         ft.dropdown.Option(key=str(c["id"]), text=c["nombre"]) for c in categorias_service.listar_categorias()
     ]
     categoria_dropdown = ft.Dropdown(label="Categoria", width=200, options=categorias_options)
-    categoria_porcentaje_field = ft.TextField(label="%", width=120)
+    categoria_porcentaje_field = ft.TextField(label="%", width=120, input_filter=FILTRO_DECIMALES_CON_SIGNO)
     agregar_categoria_button = ft.ElevatedButton("+ Agregar / actualizar")
     tabla_categorias = ft.DataTable(
         columns=[ft.DataColumn(ft.Text(t)) for t in ["Categoria", "%", ""]],
@@ -145,6 +147,7 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
     ]
     producto_dropdown = ft.Dropdown(label="Producto", width=250, options=productos_options)
     producto_precio_field = ft.TextField(label="Precio manual", width=140)
+    aplicar_mascara_moneda(producto_precio_field)
     agregar_producto_button = ft.ElevatedButton("+ Agregar / actualizar")
     tabla_productos = ft.DataTable(
         columns=[ft.DataColumn(ft.Text(t)) for t in ["Producto", "Precio manual", ""]],
@@ -174,7 +177,9 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
             mostrar_mensaje("Elegi un producto")
             return
         try:
-            precio = parsear_decimal(producto_precio_field.value, "El precio manual")
+            precio = parsear_decimal_ar_opcional(producto_precio_field.value, "El precio manual")
+            if precio is None:
+                raise ValueError("Hace falta cargar el precio manual")
             listas_precios_service.establecer_precio_producto(
                 detalle_lista_id, int(producto_dropdown.value), precio,
             )
