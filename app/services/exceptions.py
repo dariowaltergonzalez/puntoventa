@@ -64,3 +64,7 @@ class ListaPrecioDuplicadaError(Exception):
 
 class ListaPrecioNoEncontradaError(Exception):
     pass
+
+
+class CondicionIvaNoEncontradaError(Exception):
+    pass

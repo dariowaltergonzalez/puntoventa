@@ -221,6 +221,22 @@ def _migrar(conn: sqlite3.Connection) -> None:
     # Fase 2: Clientes + listas de precios
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS condiciones_iva (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre  TEXT NOT NULL UNIQUE,
+            activo  INTEGER NOT NULL DEFAULT 1,
+            CHECK (activo IN (0, 1))
+        )
+        """
+    )
+    for nombre_condicion in ("Responsable Inscripto", "Monotributista", "Exento", "Consumidor Final"):
+        conn.execute(
+            "INSERT INTO condiciones_iva (nombre) VALUES (?) ON CONFLICT(nombre) DO NOTHING",
+            (nombre_condicion,),
+        )
+
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS clientes (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
             razon_social            TEXT NOT NULL UNIQUE,
@@ -234,7 +250,7 @@ def _migrar(conn: sqlite3.Connection) -> None:
             ciudad                  TEXT,
             provincia               TEXT,
             codigo_postal           TEXT,
-            condicion_iva           TEXT,
+            condicion_iva_id        INTEGER,
             plazo_pago_dias         INTEGER,
             porcentaje_descuento    INTEGER,
             limite_credito          INTEGER,
@@ -243,6 +259,9 @@ def _migrar(conn: sqlite3.Connection) -> None:
             tasa_interes_mora_diaria INTEGER,
             observacion             TEXT,
             activo                  INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (condicion_iva_id) REFERENCES condiciones_iva (id)
+                ON DELETE SET NULL
+                ON UPDATE CASCADE,
             CHECK (activo IN (0, 1)),
             CHECK (plazo_pago_dias IS NULL OR plazo_pago_dias >= 0),
             CHECK (limite_credito IS NULL OR limite_credito >= 0),
@@ -321,6 +340,70 @@ def _migrar(conn: sqlite3.Connection) -> None:
         )
         conn.execute("DROP TABLE clientes_old_modo_limite")
         conn.execute("PRAGMA foreign_keys = ON")
+
+    columnas_clientes = {fila["name"] for fila in conn.execute("PRAGMA table_info(clientes)")}
+    if "condicion_iva" in columnas_clientes:
+        # 'condicion_iva' era texto libre; se reemplaza por 'condicion_iva_id' (referencia a la
+        # tabla condiciones_iva de arriba) para no permitir cualquier texto. Todavia en desarrollo,
+        # mismo criterio que el rebuild de arriba: se reconstruye la tabla en vez de dejar la
+        # columna vieja sin usar. Si habia texto cargado que coincide con el nombre de una
+        # condicion existente, se conserva la referencia; si no matchea nada, queda NULL.
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE clientes RENAME TO clientes_old_condicion_iva")
+        conn.execute(
+            """
+            CREATE TABLE clientes (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                razon_social            TEXT NOT NULL UNIQUE,
+                nombre_fantasia         TEXT,
+                dni                     TEXT,
+                cuit                    TEXT,
+                contacto_principal      TEXT,
+                telefono                TEXT,
+                email                   TEXT,
+                direccion               TEXT,
+                ciudad                  TEXT,
+                provincia               TEXT,
+                codigo_postal           TEXT,
+                condicion_iva_id        INTEGER,
+                plazo_pago_dias         INTEGER,
+                porcentaje_descuento    INTEGER,
+                limite_credito          INTEGER,
+                avisar_limite_credito   INTEGER NOT NULL DEFAULT 0,
+                bloquear_limite_credito INTEGER NOT NULL DEFAULT 0,
+                tasa_interes_mora_diaria INTEGER,
+                observacion             TEXT,
+                activo                  INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY (condicion_iva_id) REFERENCES condiciones_iva (id)
+                    ON DELETE SET NULL
+                    ON UPDATE CASCADE,
+                CHECK (activo IN (0, 1)),
+                CHECK (plazo_pago_dias IS NULL OR plazo_pago_dias >= 0),
+                CHECK (limite_credito IS NULL OR limite_credito >= 0),
+                CHECK (avisar_limite_credito IN (0, 1)),
+                CHECK (bloquear_limite_credito IN (0, 1))
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO clientes
+                (id, razon_social, nombre_fantasia, dni, cuit, contacto_principal, telefono, email,
+                 direccion, ciudad, provincia, codigo_postal, condicion_iva_id, plazo_pago_dias,
+                 porcentaje_descuento, limite_credito, avisar_limite_credito, bloquear_limite_credito,
+                 tasa_interes_mora_diaria, observacion, activo)
+            SELECT
+                o.id, o.razon_social, o.nombre_fantasia, o.dni, o.cuit, o.contacto_principal, o.telefono, o.email,
+                o.direccion, o.ciudad, o.provincia, o.codigo_postal, ci.id, o.plazo_pago_dias,
+                o.porcentaje_descuento, o.limite_credito, o.avisar_limite_credito, o.bloquear_limite_credito,
+                o.tasa_interes_mora_diaria, o.observacion, o.activo
+            FROM clientes_old_condicion_iva o
+            LEFT JOIN condiciones_iva ci ON ci.nombre = o.condicion_iva
+            """
+        )
+        conn.execute("DROP TABLE clientes_old_condicion_iva")
+        conn.execute("PRAGMA foreign_keys = ON")
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS cliente_contactos (

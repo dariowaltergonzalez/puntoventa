@@ -2,10 +2,11 @@ from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
-from app.services import clientes_service, listas_precios_service
+from app.services import clientes_service, condiciones_iva_service, listas_precios_service
 from app.services.exceptions import (
     ClienteDuplicadoError,
     ClienteNoEncontradoError,
+    CondicionIvaNoEncontradaError,
     ListaPrecioNoEncontradaError,
 )
 from app.shared.money import formatear_precio, formatear_porcentaje
@@ -18,7 +19,10 @@ from app.ui.campos import (
 )
 from app.ui.listados import Paginador, coincide_exacto, coincide_texto, filtrar
 
-EXCEPCIONES_NEGOCIO = (ClienteDuplicadoError, ClienteNoEncontradoError, ListaPrecioNoEncontradaError, ValueError)
+EXCEPCIONES_NEGOCIO = (
+    ClienteDuplicadoError, ClienteNoEncontradoError, CondicionIvaNoEncontradaError,
+    ListaPrecioNoEncontradaError, ValueError,
+)
 
 
 def ClientesView(page: ft.Page) -> ft.Control:
@@ -112,7 +116,13 @@ def ClientesView(page: ft.Page) -> ft.Control:
     ciudad_field = ft.TextField(label="Ciudad (opcional)", width=180)
     provincia_field = ft.TextField(label="Provincia (opcional)", width=180)
     codigo_postal_field = ft.TextField(label="Codigo postal (opcional)", width=140)
-    condicion_iva_field = ft.TextField(label="Condicion ante el IVA (opcional)", width=220)
+    condicion_iva_options = [
+        ft.dropdown.Option(key="", text="Sin elegir")
+    ] + [
+        ft.dropdown.Option(key=str(c["id"]), text=c["nombre"])
+        for c in condiciones_iva_service.listar_condiciones_iva(solo_activas=True)
+    ]
+    condicion_iva_dropdown = ft.Dropdown(label="Condicion ante el IVA (opcional)", width=220, value="", options=condicion_iva_options)
     plazo_pago_field = ft.TextField(label="Plazo de pago habitual, en dias (opcional)", width=220, input_filter=FILTRO_ENTEROS)
     porcentaje_descuento_field = ft.TextField(label="% de descuento (opcional)", width=180, hint_text="ej: 10", input_filter=FILTRO_DECIMALES)
     limite_credito_field = ft.TextField(label="Limite de credito (opcional)", width=180, input_filter=FILTRO_DECIMALES)
@@ -135,9 +145,10 @@ def ClientesView(page: ft.Page) -> ft.Control:
         editando_cliente_id = None
         for campo in (razon_social_field, nombre_fantasia_field, dni_field, cuit_field, contacto_principal_field,
                       telefono_field, email_field, direccion_field, ciudad_field, provincia_field,
-                      codigo_postal_field, condicion_iva_field, plazo_pago_field, porcentaje_descuento_field,
+                      codigo_postal_field, plazo_pago_field, porcentaje_descuento_field,
                       limite_credito_field, tasa_mora_field, observacion_field):
             campo.value = ""
+        condicion_iva_dropdown.value = ""
         avisar_limite_switch.value = False
         bloquear_limite_switch.value = False
         activo_switch.value = True
@@ -159,7 +170,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
         ciudad_field.value = c["ciudad"] or ""
         provincia_field.value = c["provincia"] or ""
         codigo_postal_field.value = c["codigo_postal"] or ""
-        condicion_iva_field.value = c["condicion_iva"] or ""
+        condicion_iva_dropdown.value = str(c["condicion_iva_id"]) if c["condicion_iva_id"] is not None else ""
         plazo_pago_field.value = str(c["plazo_pago_dias"]) if c["plazo_pago_dias"] is not None else ""
         porcentaje_descuento_field.value = str(c["porcentaje_descuento"]) if c["porcentaje_descuento"] is not None else ""
         limite_credito_field.value = formatear_precio(c["limite_credito"]) if c["limite_credito"] is not None else ""
@@ -186,7 +197,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
                 ciudad=ciudad_field.value,
                 provincia=provincia_field.value,
                 codigo_postal=codigo_postal_field.value,
-                condicion_iva=condicion_iva_field.value,
+                condicion_iva_id=int(condicion_iva_dropdown.value) if condicion_iva_dropdown.value else None,
                 plazo_pago_dias=parsear_entero_opcional(plazo_pago_field.value, "El plazo de pago"),
                 porcentaje_descuento=parsear_decimal_opcional(porcentaje_descuento_field.value, "El % de descuento"),
                 limite_credito=parsear_decimal_ar_opcional(limite_credito_field.value, "El limite de credito"),
@@ -215,7 +226,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
             ft.Row([dni_field, cuit_field, contacto_principal_field]),
             ft.Row([telefono_field, email_field]),
             ft.Row([direccion_field, ciudad_field, provincia_field, codigo_postal_field]),
-            ft.Row([condicion_iva_field, plazo_pago_field, porcentaje_descuento_field]),
+            ft.Row([condicion_iva_dropdown, plazo_pago_field, porcentaje_descuento_field]),
             ft.Row([limite_credito_field, avisar_limite_switch, bloquear_limite_switch, tasa_mora_field]),
             ft.Row([observacion_field]),
             ft.Row([activo_switch]),
@@ -316,8 +327,8 @@ def ClientesView(page: ft.Page) -> ft.Control:
             partes.append(f"Tel: {cliente['telefono']}")
         if cliente["email"]:
             partes.append(f"Email: {cliente['email']}")
-        if cliente["condicion_iva"]:
-            partes.append(f"IVA: {cliente['condicion_iva']}")
+        if cliente["condicion_iva_nombre"]:
+            partes.append(f"IVA: {cliente['condicion_iva_nombre']}")
         if cliente["plazo_pago_dias"] is not None:
             partes.append(f"Plazo de pago: {cliente['plazo_pago_dias']} dias")
         if cliente["porcentaje_descuento"] is not None:

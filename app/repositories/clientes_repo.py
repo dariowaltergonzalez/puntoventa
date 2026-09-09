@@ -15,7 +15,7 @@ def crear(
     ciudad: str | None = None,
     provincia: str | None = None,
     codigo_postal: str | None = None,
-    condicion_iva: str | None = None,
+    condicion_iva_id: int | None = None,
     plazo_pago_dias: int | None = None,
     porcentaje_descuento: int | None = None,
     limite_credito: int | None = None,
@@ -30,14 +30,14 @@ def crear(
             """
             INSERT INTO clientes
                 (razon_social, nombre_fantasia, dni, cuit, contacto_principal, telefono, email,
-                 direccion, ciudad, provincia, codigo_postal, condicion_iva, plazo_pago_dias,
+                 direccion, ciudad, provincia, codigo_postal, condicion_iva_id, plazo_pago_dias,
                  porcentaje_descuento, limite_credito, avisar_limite_credito, bloquear_limite_credito,
                  tasa_interes_mora_diaria, observacion, activo)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             """,
             (
                 razon_social, nombre_fantasia, dni, cuit, contacto_principal, telefono, email,
-                direccion, ciudad, provincia, codigo_postal, condicion_iva, plazo_pago_dias,
+                direccion, ciudad, provincia, codigo_postal, condicion_iva_id, plazo_pago_dias,
                 porcentaje_descuento, limite_credito, int(avisar_limite_credito), int(bloquear_limite_credito),
                 tasa_interes_mora_diaria, observacion,
             ),
@@ -61,7 +61,7 @@ def actualizar(
     ciudad: str | None,
     provincia: str | None,
     codigo_postal: str | None,
-    condicion_iva: str | None,
+    condicion_iva_id: int | None,
     plazo_pago_dias: int | None,
     porcentaje_descuento: int | None,
     limite_credito: int | None,
@@ -78,14 +78,14 @@ def actualizar(
             UPDATE clientes
             SET razon_social = ?, nombre_fantasia = ?, dni = ?, cuit = ?, contacto_principal = ?,
                 telefono = ?, email = ?, direccion = ?, ciudad = ?, provincia = ?, codigo_postal = ?,
-                condicion_iva = ?, plazo_pago_dias = ?, porcentaje_descuento = ?, limite_credito = ?,
+                condicion_iva_id = ?, plazo_pago_dias = ?, porcentaje_descuento = ?, limite_credito = ?,
                 avisar_limite_credito = ?, bloquear_limite_credito = ?, tasa_interes_mora_diaria = ?,
                 observacion = ?, activo = ?
             WHERE id = ?
             """,
             (
                 razon_social, nombre_fantasia, dni, cuit, contacto_principal, telefono, email,
-                direccion, ciudad, provincia, codigo_postal, condicion_iva, plazo_pago_dias,
+                direccion, ciudad, provincia, codigo_postal, condicion_iva_id, plazo_pago_dias,
                 porcentaje_descuento, limite_credito, int(avisar_limite_credito), int(bloquear_limite_credito),
                 tasa_interes_mora_diaria, observacion, activo, cliente_id,
             ),
@@ -98,7 +98,15 @@ def actualizar(
 def obtener_por_id(cliente_id: int) -> sqlite3.Row | None:
     conn = get_connection()
     try:
-        return conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
+        return conn.execute(
+            """
+            SELECT c.*, ci.nombre AS condicion_iva_nombre
+            FROM clientes c
+            LEFT JOIN condiciones_iva ci ON ci.id = c.condicion_iva_id
+            WHERE c.id = ?
+            """,
+            (cliente_id,),
+        ).fetchone()
     finally:
         conn.close()
 
@@ -134,10 +142,14 @@ def obtener_o_crear_por_razon_social(razon_social: str, conn: sqlite3.Connection
 def listar(solo_activos: bool = False) -> list[sqlite3.Row]:
     conn = get_connection()
     try:
-        sql = "SELECT * FROM clientes"
+        sql = """
+            SELECT c.*, ci.nombre AS condicion_iva_nombre
+            FROM clientes c
+            LEFT JOIN condiciones_iva ci ON ci.id = c.condicion_iva_id
+        """
         if solo_activos:
-            sql += " WHERE activo = 1"
-        sql += " ORDER BY razon_social"
+            sql += " WHERE c.activo = 1"
+        sql += " ORDER BY c.razon_social"
         return conn.execute(sql).fetchall()
     finally:
         conn.close()

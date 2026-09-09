@@ -200,6 +200,16 @@ CREATE INDEX IF NOT EXISTS idx_orden_compra_items_producto_id ON orden_compra_it
 
 -- Fase 2: Clientes + listas de precios
 
+CREATE TABLE IF NOT EXISTS condiciones_iva (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre  TEXT NOT NULL UNIQUE,
+    activo  INTEGER NOT NULL DEFAULT 1,
+    CHECK (activo IN (0, 1))
+);
+
+INSERT OR IGNORE INTO condiciones_iva (nombre) VALUES
+    ('Responsable Inscripto'), ('Monotributista'), ('Exento'), ('Consumidor Final');
+
 CREATE TABLE IF NOT EXISTS clientes (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     razon_social            TEXT NOT NULL UNIQUE,
@@ -213,7 +223,7 @@ CREATE TABLE IF NOT EXISTS clientes (
     ciudad                  TEXT,
     provincia               TEXT,
     codigo_postal           TEXT,
-    condicion_iva           TEXT,
+    condicion_iva_id        INTEGER,                 -- FK a condiciones_iva, nullable
     plazo_pago_dias         INTEGER,                 -- nullable: sin plazo habitual definido
     porcentaje_descuento    INTEGER,                 -- escalado x100, nullable: sin descuento
     limite_credito          INTEGER,                 -- escalado x100, nullable: sin limite
@@ -222,6 +232,9 @@ CREATE TABLE IF NOT EXISTS clientes (
     tasa_interes_mora_diaria INTEGER,                -- escalado x100 (% diario), nullable: sin mora
     observacion             TEXT,
     activo                  INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (condicion_iva_id) REFERENCES condiciones_iva (id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
     CHECK (activo IN (0, 1)),
     CHECK (plazo_pago_dias IS NULL OR plazo_pago_dias >= 0),
     CHECK (limite_credito IS NULL OR limite_credito >= 0),

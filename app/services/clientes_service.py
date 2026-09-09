@@ -1,18 +1,19 @@
 import sqlite3
 from decimal import Decimal
 
-from app.repositories import clientes_repo, listas_precios_repo
+from app.repositories import clientes_repo, condiciones_iva_repo, listas_precios_repo
 from app.services import log_service
 from app.services.exceptions import (
     ClienteDuplicadoError,
     ClienteNoEncontradoError,
+    CondicionIvaNoEncontradaError,
     ListaPrecioNoEncontradaError,
 )
 from app.shared.money import entero_a_porcentaje, entero_a_precio, porcentaje_a_entero, precio_a_entero
 
 _CAMPOS_LOG = [
     "razon_social", "nombre_fantasia", "dni", "cuit", "contacto_principal", "telefono", "email",
-    "direccion", "ciudad", "provincia", "codigo_postal", "condicion_iva", "plazo_pago_dias",
+    "direccion", "ciudad", "provincia", "codigo_postal", "condicion_iva_nombre", "plazo_pago_dias",
     "porcentaje_descuento", "limite_credito", "avisar_limite_credito", "bloquear_limite_credito",
     "tasa_interes_mora_diaria", "observacion", "activo",
 ]
@@ -37,7 +38,8 @@ def _a_dict(fila: sqlite3.Row) -> dict:
         "ciudad": fila["ciudad"],
         "provincia": fila["provincia"],
         "codigo_postal": fila["codigo_postal"],
-        "condicion_iva": fila["condicion_iva"],
+        "condicion_iva_id": fila["condicion_iva_id"],
+        "condicion_iva_nombre": fila["condicion_iva_nombre"],
         "plazo_pago_dias": fila["plazo_pago_dias"],
         "porcentaje_descuento": entero_a_porcentaje(fila["porcentaje_descuento"]) if fila["porcentaje_descuento"] is not None else None,
         "limite_credito": entero_a_precio(fila["limite_credito"]) if fila["limite_credito"] is not None else None,
@@ -99,6 +101,13 @@ def _validar_limite_credito(
     return precio_a_entero(limite_credito), avisar, bloquear
 
 
+def _validar_condicion_iva(condicion_iva_id: int | None) -> None:
+    if condicion_iva_id is None:
+        return
+    if condiciones_iva_repo.obtener_por_id(condicion_iva_id) is None:
+        raise CondicionIvaNoEncontradaError(f"No existe la condicion ante el IVA {condicion_iva_id}")
+
+
 def crear_cliente(
     razon_social: str,
     nombre_fantasia: str | None = None,
@@ -111,7 +120,7 @@ def crear_cliente(
     ciudad: str | None = None,
     provincia: str | None = None,
     codigo_postal: str | None = None,
-    condicion_iva: str | None = None,
+    condicion_iva_id: int | None = None,
     plazo_pago_dias: int | None = None,
     porcentaje_descuento: Decimal | None = None,
     limite_credito: Decimal | None = None,
@@ -126,6 +135,7 @@ def crear_cliente(
     _validar_plazo_pago(plazo_pago_dias)
     _validar_porcentaje_descuento(porcentaje_descuento)
     _validar_tasa_interes_mora(tasa_interes_mora_diaria)
+    _validar_condicion_iva(condicion_iva_id)
 
     limite_entero, avisar, bloquear = _validar_limite_credito(
         limite_credito, avisar_limite_credito, bloquear_limite_credito,
@@ -144,7 +154,7 @@ def crear_cliente(
             ciudad=_texto_o_none(ciudad),
             provincia=_texto_o_none(provincia),
             codigo_postal=_texto_o_none(codigo_postal),
-            condicion_iva=_texto_o_none(condicion_iva),
+            condicion_iva_id=condicion_iva_id,
             plazo_pago_dias=plazo_pago_dias,
             porcentaje_descuento=porcentaje_a_entero(porcentaje_descuento) if porcentaje_descuento is not None else None,
             limite_credito=limite_entero,
@@ -173,7 +183,7 @@ def actualizar_cliente(
     ciudad: str | None,
     provincia: str | None,
     codigo_postal: str | None,
-    condicion_iva: str | None,
+    condicion_iva_id: int | None,
     plazo_pago_dias: int | None,
     porcentaje_descuento: Decimal | None,
     limite_credito: Decimal | None,
@@ -189,6 +199,7 @@ def actualizar_cliente(
     _validar_plazo_pago(plazo_pago_dias)
     _validar_porcentaje_descuento(porcentaje_descuento)
     _validar_tasa_interes_mora(tasa_interes_mora_diaria)
+    _validar_condicion_iva(condicion_iva_id)
 
     antes = obtener_cliente(cliente_id)
     if antes is None:
@@ -212,7 +223,7 @@ def actualizar_cliente(
             ciudad=_texto_o_none(ciudad),
             provincia=_texto_o_none(provincia),
             codigo_postal=_texto_o_none(codigo_postal),
-            condicion_iva=_texto_o_none(condicion_iva),
+            condicion_iva_id=condicion_iva_id,
             plazo_pago_dias=plazo_pago_dias,
             porcentaje_descuento=porcentaje_a_entero(porcentaje_descuento) if porcentaje_descuento is not None else None,
             limite_credito=limite_entero,
