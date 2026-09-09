@@ -61,6 +61,32 @@ def _contacto_a_dict(fila: sqlite3.Row) -> dict:
     }
 
 
+PLAZO_PAGO_MAXIMO_DIAS = 120
+PORCENTAJE_DESCUENTO_MAXIMO = Decimal("100")
+TASA_INTERES_MORA_MAXIMA = Decimal("20")
+
+
+def _validar_plazo_pago(plazo_pago_dias: int | None) -> None:
+    if plazo_pago_dias is None:
+        return
+    if not (0 <= plazo_pago_dias <= PLAZO_PAGO_MAXIMO_DIAS):
+        raise ValueError(f"El plazo de pago debe estar entre 0 y {PLAZO_PAGO_MAXIMO_DIAS} dias")
+
+
+def _validar_porcentaje_descuento(porcentaje_descuento: Decimal | None) -> None:
+    if porcentaje_descuento is None:
+        return
+    if not (0 <= porcentaje_descuento <= PORCENTAJE_DESCUENTO_MAXIMO):
+        raise ValueError(f"El % de descuento debe estar entre 0 y {PORCENTAJE_DESCUENTO_MAXIMO}")
+
+
+def _validar_tasa_interes_mora(tasa_interes_mora_diaria: Decimal | None) -> None:
+    if tasa_interes_mora_diaria is None:
+        return
+    if not (0 <= tasa_interes_mora_diaria <= TASA_INTERES_MORA_MAXIMA):
+        raise ValueError(f"El interes por mora diario debe estar entre 0 y {TASA_INTERES_MORA_MAXIMA}%")
+
+
 def _validar_limite_credito(
     limite_credito: Decimal | None, avisar: bool, bloquear: bool,
 ) -> tuple[int | None, bool, bool]:
@@ -97,8 +123,9 @@ def crear_cliente(
     razon_social = razon_social.strip()
     if not razon_social:
         raise ValueError("La razon social del cliente no puede estar vacia")
-    if plazo_pago_dias is not None and plazo_pago_dias < 0:
-        raise ValueError("El plazo de pago no puede ser negativo")
+    _validar_plazo_pago(plazo_pago_dias)
+    _validar_porcentaje_descuento(porcentaje_descuento)
+    _validar_tasa_interes_mora(tasa_interes_mora_diaria)
 
     limite_entero, avisar, bloquear = _validar_limite_credito(
         limite_credito, avisar_limite_credito, bloquear_limite_credito,
@@ -159,8 +186,9 @@ def actualizar_cliente(
     razon_social = razon_social.strip()
     if not razon_social:
         raise ValueError("La razon social del cliente no puede estar vacia")
-    if plazo_pago_dias is not None and plazo_pago_dias < 0:
-        raise ValueError("El plazo de pago no puede ser negativo")
+    _validar_plazo_pago(plazo_pago_dias)
+    _validar_porcentaje_descuento(porcentaje_descuento)
+    _validar_tasa_interes_mora(tasa_interes_mora_diaria)
 
     antes = obtener_cliente(cliente_id)
     if antes is None:
