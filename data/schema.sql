@@ -318,4 +318,69 @@ CREATE INDEX IF NOT EXISTS idx_recepcion_items_recepcion_id ON recepcion_items (
 CREATE INDEX IF NOT EXISTS idx_recepcion_items_producto_id ON recepcion_items (producto_id);
 CREATE INDEX IF NOT EXISTS idx_lotes_producto_id ON lotes (producto_id);
 CREATE INDEX IF NOT EXISTS idx_lotes_producto_fecha ON lotes (producto_id, fecha);
+
+-- Fase 3: Cuentas Corrientes
+
+CREATE TABLE IF NOT EXISTS cc_cargos (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id            INTEGER,                    -- exactamente uno de cliente_id/proveedor_id
+    proveedor_id          INTEGER,
+    monto                 INTEGER NOT NULL,            -- escalado x100
+    fecha                 TEXT NOT NULL,
+    origen                TEXT NOT NULL,               -- 'manual' | 'recepcion' (futuro: 'venta')
+    origen_recepcion_id   INTEGER,                     -- nullable: solo si origen = 'recepcion'
+    observacion           TEXT,
+    FOREIGN KEY (cliente_id) REFERENCES clientes (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (proveedor_id) REFERENCES proveedores (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (origen_recepcion_id) REFERENCES recepciones (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
+    CHECK (monto > 0),
+    CHECK (origen IN ('manual', 'recepcion', 'venta')),
+    CHECK (origen != 'recepcion' OR origen_recepcion_id IS NOT NULL)
+);
+
+CREATE TABLE IF NOT EXISTS cc_pagos (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id     INTEGER,                    -- exactamente uno de cliente_id/proveedor_id
+    proveedor_id   INTEGER,
+    monto          INTEGER NOT NULL,           -- escalado x100
+    fecha          TEXT NOT NULL,
+    observacion    TEXT,
+    FOREIGN KEY (cliente_id) REFERENCES clientes (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (proveedor_id) REFERENCES proveedores (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
+    CHECK (monto > 0)
+);
+
+CREATE TABLE IF NOT EXISTS cc_pago_aplicaciones (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    pago_id    INTEGER NOT NULL,
+    cargo_id   INTEGER NOT NULL,
+    monto      INTEGER NOT NULL,               -- escalado x100, cuanto de ese pago fue a ese cargo
+    FOREIGN KEY (pago_id) REFERENCES cc_pagos (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (cargo_id) REFERENCES cc_cargos (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CHECK (monto > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cc_cargos_cliente_id ON cc_cargos (cliente_id);
+CREATE INDEX IF NOT EXISTS idx_cc_cargos_proveedor_id ON cc_cargos (proveedor_id);
+CREATE INDEX IF NOT EXISTS idx_cc_cargos_fecha ON cc_cargos (fecha);
+CREATE INDEX IF NOT EXISTS idx_cc_pagos_cliente_id ON cc_pagos (cliente_id);
+CREATE INDEX IF NOT EXISTS idx_cc_pagos_proveedor_id ON cc_pagos (proveedor_id);
+CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_pago_id ON cc_pago_aplicaciones (pago_id);
+CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_cargo_id ON cc_pago_aplicaciones (cargo_id);
 CREATE INDEX IF NOT EXISTS idx_lotes_recepcion_id ON lotes (recepcion_id);

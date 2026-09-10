@@ -566,3 +566,62 @@ def _migrar(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_cliente_listas_precios_cliente_id "
         "ON cliente_listas_precios (cliente_id)"
     )
+
+    # Fase 3: Cuentas Corrientes
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cc_cargos (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id            INTEGER,
+            proveedor_id          INTEGER,
+            monto                 INTEGER NOT NULL,
+            fecha                 TEXT NOT NULL,
+            origen                TEXT NOT NULL,
+            origen_recepcion_id   INTEGER,
+            observacion           TEXT,
+            FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            FOREIGN KEY (proveedor_id) REFERENCES proveedores (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            FOREIGN KEY (origen_recepcion_id) REFERENCES recepciones (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
+            CHECK (monto > 0),
+            CHECK (origen IN ('manual', 'recepcion', 'venta')),
+            CHECK (origen != 'recepcion' OR origen_recepcion_id IS NOT NULL)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cc_pagos (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id     INTEGER,
+            proveedor_id   INTEGER,
+            monto          INTEGER NOT NULL,
+            fecha          TEXT NOT NULL,
+            observacion    TEXT,
+            FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            FOREIGN KEY (proveedor_id) REFERENCES proveedores (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
+            CHECK (monto > 0)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cc_pago_aplicaciones (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            pago_id    INTEGER NOT NULL,
+            cargo_id   INTEGER NOT NULL,
+            monto      INTEGER NOT NULL,
+            FOREIGN KEY (pago_id) REFERENCES cc_pagos (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (cargo_id) REFERENCES cc_cargos (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            CHECK (monto > 0)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_cargos_cliente_id ON cc_cargos (cliente_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_cargos_proveedor_id ON cc_cargos (proveedor_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_cargos_fecha ON cc_cargos (fecha)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_pagos_cliente_id ON cc_pagos (cliente_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_pagos_proveedor_id ON cc_pagos (proveedor_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_pago_id ON cc_pago_aplicaciones (pago_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_cargo_id ON cc_pago_aplicaciones (cargo_id)")

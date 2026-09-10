@@ -67,6 +67,7 @@ def crear_con_recepcion_inmediata(
     recepcion_numero_remito: str | None,
     recepcion_observacion: str | None,
     items_recepcion: list[dict],
+    monto_a_credito: int | None = None,
 ) -> dict:
     """Checkbox '¿Ya la tenes en mano?': crea la OC y la recibe en el MISMO commit, reutilizando
     recepciones_repo.aplicar_recepcion -- no es un camino de codigo paralelo.
@@ -105,7 +106,8 @@ def crear_con_recepcion_inmediata(
             item_recepcion["orden_compra_item_id"] = item_oc["id"]
 
         resultado = recepciones_repo.aplicar_recepcion(
-            conn, oc["id"], recepcion_fecha, recepcion_numero_remito, recepcion_observacion, items_recepcion
+            conn, oc["id"], recepcion_fecha, recepcion_numero_remito, recepcion_observacion, items_recepcion,
+            monto_a_credito,
         )
         resultado["productos_creados"] = productos_creados_al_pedir + resultado["productos_creados"]
         conn.commit()

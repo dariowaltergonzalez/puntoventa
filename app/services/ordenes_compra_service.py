@@ -128,12 +128,14 @@ def crear_orden_compra_recibida(
     recepcion_fecha: str | None = None,
     recepcion_numero_remito: str | None = None,
     recepcion_observacion: str | None = None,
+    a_credito: bool = False,
 ) -> dict:
     """Checkbox '¿ya la tenes en mano?'. Misma validacion que crear_orden_compra +
     confirmar_recepcion, pero la persistencia va toda en un solo commit."""
     proveedor = _resolver_proveedor(proveedor_id, proveedor_nombre_nuevo, usar_proveedor_generico)
     items_validados = _validar_items(items, permitir_producto_nuevo=True)
     items_recepcion_validados = recepciones_service.validar_items_recepcion(recepcion_items)
+    monto_a_credito = recepciones_service.calcular_monto_total_entero(items_recepcion_validados) if a_credito else None
 
     resultado = ordenes_compra_repo.crear_con_recepcion_inmediata(
         proveedor_id=proveedor["id"],
@@ -146,12 +148,18 @@ def crear_orden_compra_recibida(
         recepcion_numero_remito=(recepcion_numero_remito or "").strip() or None,
         recepcion_observacion=(recepcion_observacion or "").strip() or None,
         items_recepcion=items_recepcion_validados,
+        monto_a_credito=monto_a_credito,
     )
     log_service.registrar(
         "orden_compra", resultado["orden_compra_id"],
         f"Se creo la orden de compra {resultado['numero']} a '{proveedor['nombre']}' y se recibio en el acto "
         f"(estado: {resultado['estado_orden_compra']})",
     )
+    if resultado.get("cargo_id") is not None:
+        log_service.registrar(
+            "proveedor", proveedor["id"],
+            f"Se genero un cargo en cuenta corriente por la compra a credito de {resultado['numero']}",
+        )
     for producto_id in resultado["productos_creados"]:
         producto = productos_repo.obtener_por_id(producto_id)
         log_service.registrar(

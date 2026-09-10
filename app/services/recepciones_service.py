@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime
+from decimal import Decimal
 
 from app.repositories import ordenes_compra_repo, productos_repo, recepciones_repo
 from app.services import log_service
@@ -64,12 +65,24 @@ def validar_items_recepcion(items: list[dict]) -> list[dict]:
     return items_validados
 
 
+def calcular_monto_total_entero(items_validados: list[dict]) -> int:
+    """Suma cantidad*costo de todas las lineas (incluidos items libres, como flete) usando
+    aritmetica Decimal -- nunca multiplicando directamente dos columnas enteras de escalas
+    distintas. Sirve para el monto del cargo en Cuentas Corrientes cuando la recepcion es a credito."""
+    total = sum(
+        (entero_a_cantidad(i["cantidad_recibida"]) * entero_a_precio(i["costo_unitario"]) for i in items_validados),
+        Decimal("0"),
+    )
+    return precio_a_entero(total)
+
+
 def confirmar_recepcion(
     orden_compra_id: int,
     items: list[dict],
     fecha: str | None = None,
     numero_remito: str | None = None,
     observacion: str | None = None,
+    a_credito: bool = False,
 ) -> dict:
     oc = ordenes_compra_repo.obtener_por_id(orden_compra_id)
     if oc is None:
@@ -78,6 +91,7 @@ def confirmar_recepcion(
         raise OrdenCompraCanceladaError(f"La orden de compra {oc['numero']} esta cancelada")
 
     items_validados = validar_items_recepcion(items)
+    monto_a_credito = calcular_monto_total_entero(items_validados) if a_credito else None
 
     resultado = recepciones_repo.confirmar_recepcion(
         orden_compra_id=orden_compra_id,
@@ -85,12 +99,18 @@ def confirmar_recepcion(
         numero_remito=(numero_remito or "").strip() or None,
         observacion=(observacion or "").strip() or None,
         items=items_validados,
+        monto_a_credito=monto_a_credito,
     )
 
     log_service.registrar(
         "orden_compra", resultado["orden_compra_id"],
         f"Se registro una recepcion en {oc['numero']} (nuevo estado: {resultado['estado_orden_compra']})",
     )
+    if resultado.get("cargo_id") is not None:
+        log_service.registrar(
+            "proveedor", oc["proveedor_id"],
+            f"Se genero un cargo en cuenta corriente por la recepcion a credito de {oc['numero']}",
+        )
     for producto_id in resultado["productos_creados"]:
         producto = productos_repo.obtener_por_id(producto_id)
         log_service.registrar(

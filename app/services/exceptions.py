@@ -68,3 +68,11 @@ class ListaPrecioNoEncontradaError(Exception):
 
 class CondicionIvaNoEncontradaError(Exception):
     pass
+
+
+class CargoNoEncontradoError(Exception):
+    pass
+
+
+class MontoPagoInvalidoError(Exception):
+    pass

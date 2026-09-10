@@ -1,7 +1,7 @@
 import sqlite3
 
 from app.db.connection import get_connection
-from app.repositories import movimientos_repo
+from app.repositories import cc_repo, movimientos_repo
 
 NOMBRE_CATEGORIA_SIN_CATEGORIZAR = "Sin categorizar"
 UNIDAD_PLACEHOLDER = "unidad"
@@ -13,6 +13,7 @@ def confirmar_recepcion(
     numero_remito: str | None,
     observacion: str | None,
     items: list[dict],
+    monto_a_credito: int | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> dict:
     """Punto de entrada publico para el camino normal (OC ya pendiente, se recibe despues).
@@ -22,7 +23,9 @@ def confirmar_recepcion(
         conn = get_connection()
         conn.execute("BEGIN IMMEDIATE")
     try:
-        resultado = aplicar_recepcion(conn, orden_compra_id, fecha, numero_remito, observacion, items)
+        resultado = aplicar_recepcion(
+            conn, orden_compra_id, fecha, numero_remito, observacion, items, monto_a_credito,
+        )
         if conexion_propia:
             conn.commit()
         return resultado
@@ -42,6 +45,7 @@ def aplicar_recepcion(
     numero_remito: str | None,
     observacion: str | None,
     items: list[dict],
+    monto_a_credito: int | None = None,
 ) -> dict:
     """Nucleo reutilizable: asume que conn YA tiene una transaccion BEGIN IMMEDIATE abierta
     (propia, de confirmar_recepcion, o de ordenes_compra_repo.crear_con_recepcion_inmediata).
@@ -140,12 +144,27 @@ def aplicar_recepcion(
 
     nuevo_estado = _recalcular_estado_oc(conn, orden_compra_id)
 
+    cargo_id = None
+    if monto_a_credito:
+        observacion_cargo = f"Compra a credito - {numero_oc}" + (f" (remito {numero_remito})" if numero_remito else "")
+        cargo_id = cc_repo.crear_cargo(
+            cliente_id=None,
+            proveedor_id=proveedor_id_oc,
+            monto=monto_a_credito,
+            fecha=fecha,
+            origen="recepcion",
+            origen_recepcion_id=recepcion_id,
+            observacion=observacion_cargo,
+            conn=conn,
+        )
+
     return {
         "recepcion_id": recepcion_id,
         "orden_compra_id": orden_compra_id,
         "numero_orden_compra": numero_oc,
         "estado_orden_compra": nuevo_estado,
         "productos_creados": productos_creados,
+        "cargo_id": cargo_id,
     }
 
 
