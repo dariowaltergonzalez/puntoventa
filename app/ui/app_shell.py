@@ -2,6 +2,7 @@ import flet as ft
 
 from app.ui.categorias_view import CategoriasView
 from app.ui.clientes_view import ClientesView
+from app.ui.cuentas_corrientes_view import CuentasCorrientesView
 from app.ui.listas_precios_view import ListasPreciosView
 from app.ui.log_view import LogView
 from app.ui.movimientos_view import MovimientosView
@@ -11,7 +12,7 @@ from app.ui.proveedores_view import ProveedoresView
 from app.ui.stock_view import StockView
 
 # Agrupacion del menu por seccion (ver "Estructura del menu" en el plan de producto).
-# Cada pantalla se suma recien en su fase; por ahora Cuentas Corrientes/Ventas no existen todavia.
+# Cada pantalla se suma recien en su fase; por ahora Medios de Pago/Ventas no existen todavia.
 GRUPOS_MENU = [
     ("Catalogo", [
         ("Categorias", ft.Icons.CATEGORY, CategoriasView),
@@ -23,6 +24,9 @@ GRUPOS_MENU = [
     ("Operaciones", [
         ("Compras", ft.Icons.SHOPPING_CART, OrdenesCompraView),
         ("Movimientos", ft.Icons.SWAP_VERT, MovimientosView),
+    ]),
+    ("Cuentas", [
+        ("Cuentas Corrientes", ft.Icons.ACCOUNT_BALANCE_WALLET, CuentasCorrientesView),
     ]),
     ("Consultas", [
         ("Stock", ft.Icons.BAR_CHART, StockView),

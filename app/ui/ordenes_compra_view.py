@@ -387,10 +387,14 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     ya_en_mano_switch = ft.Switch(label="¿Ya la tenes en mano? (se recibe en el acto)")
     remito_field = ft.TextField(label="Numero de remito (opcional)", width=220, visible=False)
     recepcion_observacion_field = ft.TextField(label="Observacion de la recepcion (opcional)", expand=True, visible=False)
+    recepcion_a_credito_switch = ft.Switch(
+        label="Esta compra queda a credito (genera cargo en Cuentas Corrientes)", visible=False,
+    )
 
     def toggle_ya_en_mano(e: ft.ControlEvent) -> None:
         remito_field.visible = ya_en_mano_switch.value
         recepcion_observacion_field.visible = ya_en_mano_switch.value
+        recepcion_a_credito_switch.visible = ya_en_mano_switch.value
         if ya_en_mano_switch.value and not fecha_estimada_field.value:
             fecha_estimada_field.value = date.today().isoformat()
         page.update()
@@ -421,6 +425,8 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         remito_field.visible = False
         recepcion_observacion_field.value = ""
         recepcion_observacion_field.visible = False
+        recepcion_a_credito_switch.value = False
+        recepcion_a_credito_switch.visible = False
         guardar_form_texto.value = "Crear orden de compra"
         form_titulo.value = "Nueva orden de compra"
         agregar_linea_pedido()
@@ -455,6 +461,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                     usar_proveedor_generico=usar_generico, fecha_estimada=fecha_estimada,
                     iva_porcentaje=iva, observacion=observacion,
                     recepcion_numero_remito=remito_field.value, recepcion_observacion=recepcion_observacion_field.value,
+                    a_credito=recepcion_a_credito_switch.value,
                 )
             else:
                 oc = ordenes_compra_service.crear_orden_compra(
@@ -480,6 +487,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             agregar_linea_button,
             ya_en_mano_switch,
             ft.Row([remito_field, recepcion_observacion_field]),
+            recepcion_a_credito_switch,
             ft.Row([guardar_form_button, cancelar_form_button]),
         ],
         visible=False,
@@ -542,6 +550,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
 
     seccion_recepcion_numero_remito = ft.TextField(label="Numero de remito (opcional)", width=220)
     seccion_recepcion_observacion = ft.TextField(label="Observacion (opcional)", expand=True)
+    seccion_recepcion_a_credito_switch = ft.Switch(label="Esta compra queda a credito (genera cargo en Cuentas Corrientes)")
     contenedor_pendientes_recepcion = ft.Column([])
     contenedor_lineas_extra = ft.Column([])
     agregar_extra_button = ft.TextButton("+ Agregar item extra (no pedido)", on_click=agregar_linea_extra)
@@ -555,6 +564,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             contenedor_lineas_extra,
             agregar_extra_button,
             ft.Row([seccion_recepcion_numero_remito, seccion_recepcion_observacion]),
+            seccion_recepcion_a_credito_switch,
             confirmar_recepcion_button,
         ],
         visible=False,
@@ -666,6 +676,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         refrescar_lineas_extra()
         seccion_recepcion_numero_remito.value = ""
         seccion_recepcion_observacion.value = ""
+        seccion_recepcion_a_credito_switch.value = False
         seccion_recepcion.visible = True
         page.update()
 
@@ -695,8 +706,12 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                 orden_compra_id=detalle_oc_id, items=items,
                 numero_remito=seccion_recepcion_numero_remito.value,
                 observacion=seccion_recepcion_observacion.value,
+                a_credito=seccion_recepcion_a_credito_switch.value,
             )
-            mostrar_mensaje("Recepcion registrada")
+            mostrar_mensaje(
+                "Recepcion registrada" + (" (a credito, se genero el cargo en Cuentas Corrientes)"
+                                           if seccion_recepcion_a_credito_switch.value else "")
+            )
             refrescar_detalle()
         except EXCEPCIONES_NEGOCIO as ex:
             mostrar_mensaje(str(ex))

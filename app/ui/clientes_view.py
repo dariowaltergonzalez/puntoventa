@@ -74,13 +74,13 @@ def ClientesView(page: ft.Page) -> ft.Control:
             ft.DataCell(ft.Row([
                 ft.IconButton(ft.Icons.VISIBILITY, tooltip="Ver detalle / editar", data=c["id"],
                               on_click=lambda e: ir_a_detalle(e.control.data)),
-                ft.IconButton(ft.Icons.ACCOUNT_BALANCE_WALLET, tooltip="Estado de cuenta (disponible en Fase 3)",
-                              data=c["id"], on_click=mostrar_estado_cuenta_placeholder),
+                ft.IconButton(ft.Icons.ACCOUNT_BALANCE_WALLET, tooltip="Estado de cuenta",
+                              data=c["id"], on_click=mostrar_estado_cuenta_aviso),
             ])),
         ])
 
-    def mostrar_estado_cuenta_placeholder(e: ft.ControlEvent) -> None:
-        mostrar_mensaje("El estado de cuenta va a estar disponible cuando implementemos Cuentas Corrientes.")
+    def mostrar_estado_cuenta_aviso(e: ft.ControlEvent) -> None:
+        mostrar_mensaje("Para ver el estado de cuenta, anda al menu 'Cuentas Corrientes' y buscá a este cliente.")
 
     def refrescar_lista(e: ft.ControlEvent | None = None) -> None:
         todos = clientes_service.listar_clientes()
