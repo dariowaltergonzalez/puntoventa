@@ -11,9 +11,9 @@ from app.ui.ordenes_compra_view import OrdenesCompraView
 from app.ui.productos_view import ProductosView
 from app.ui.proveedores_view import ProveedoresView
 from app.ui.stock_view import StockView
+from app.ui.ventas_view import VentasView
 
 # Agrupacion del menu por seccion (ver "Estructura del menu" en el plan de producto).
-# Cada pantalla se suma recien en su fase; por ahora Ventas no existe todavia.
 GRUPOS_MENU = [
     ("Catalogo", [
         ("Categorias", ft.Icons.CATEGORY, CategoriasView),
@@ -24,6 +24,7 @@ GRUPOS_MENU = [
     ]),
     ("Operaciones", [
         ("Compras", ft.Icons.SHOPPING_CART, OrdenesCompraView),
+        ("Ventas", ft.Icons.POINT_OF_SALE, VentasView),
         ("Movimientos", ft.Icons.SWAP_VERT, MovimientosView),
     ]),
     ("Cuentas", [

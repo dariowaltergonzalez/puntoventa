@@ -175,6 +175,30 @@ def _validar_pagos(pagos_entrada: list[dict], total_venta: Decimal) -> list[dict
     return pagos_validados
 
 
+def previsualizar_totales(
+    items: list[dict],
+    lista_precio_id: int | None = None,
+    cliente_id: int | None = None,
+    descuento_total_porcentaje: Decimal | None = None,
+    iva_porcentaje: Decimal | None = None,
+) -> dict:
+    """Valida y calcula subtotal/total sin persistir nada -- para mostrar en vivo en la UI
+    mientras se arma la venta, reutilizando exactamente la misma logica que crear_venta usa al
+    confirmar (evita que la previsualizacion y el resultado final puedan llegar a diferir)."""
+    items_validados = _validar_items(items, lista_precio_id)
+    cliente_descuento = None
+    if cliente_id is not None:
+        cliente = clientes_service.obtener_cliente(cliente_id)
+        cliente_descuento = cliente["porcentaje_descuento"] if cliente else None
+    descuento_total_entero = (
+        porcentaje_a_entero(descuento_total_porcentaje) if descuento_total_porcentaje is not None else None
+    )
+    return calcular_totales(
+        items_validados, cliente_descuento, descuento_total_entero,
+        int(iva_porcentaje) if iva_porcentaje is not None else None,
+    )
+
+
 def crear_venta(
     items: list[dict],
     pagos: list[dict],
