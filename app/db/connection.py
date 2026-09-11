@@ -171,20 +171,96 @@ def _migrar(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS lotes (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
             producto_id        INTEGER NOT NULL,
-            recepcion_id       INTEGER NOT NULL,
+            recepcion_id       INTEGER,
+            origen             TEXT NOT NULL DEFAULT 'recepcion',
             cantidad_recibida  INTEGER NOT NULL,
             cantidad_restante  INTEGER NOT NULL,
             costo_unitario     INTEGER NOT NULL,
             fecha              TEXT NOT NULL,
             FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE RESTRICT ON UPDATE CASCADE,
             FOREIGN KEY (recepcion_id) REFERENCES recepciones (id) ON DELETE RESTRICT ON UPDATE CASCADE,
-            CHECK (cantidad_recibida > 0), CHECK (cantidad_restante >= 0), CHECK (costo_unitario >= 0)
+            CHECK (cantidad_recibida > 0), CHECK (cantidad_restante >= 0), CHECK (costo_unitario >= 0),
+            CHECK (origen IN ('recepcion', 'inicial')),
+            CHECK (origen != 'recepcion' OR recepcion_id IS NOT NULL)
         )
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_producto_id ON lotes (producto_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_producto_fecha ON lotes (producto_id, fecha)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_recepcion_id ON lotes (recepcion_id)")
+
+    columnas_lotes = {fila["name"] for fila in conn.execute("PRAGMA table_info(lotes)")}
+    recepcion_id_nullable = any(
+        fila["name"] == "recepcion_id" and fila["notnull"] == 0
+        for fila in conn.execute("PRAGMA table_info(lotes)")
+    )
+    if "origen" not in columnas_lotes or not recepcion_id_nullable:
+        # Se necesita poder tener lotes "de arranque" sin recepcion real (ver backfill mas abajo).
+        # recepcion_id era NOT NULL -- no se puede relajar con ALTER simple, se reconstruye la tabla
+        # (mismo patron ya usado antes; legacy_alter_table=ON evita que se rompan las FK de
+        # recepcion_items/movimientos que apuntan a lotes).
+        conn.execute("PRAGMA legacy_alter_table = ON")
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE lotes RENAME TO lotes_old_origen")
+        conn.execute(
+            """
+            CREATE TABLE lotes (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id        INTEGER NOT NULL,
+                recepcion_id       INTEGER,
+                origen             TEXT NOT NULL DEFAULT 'recepcion',
+                cantidad_recibida  INTEGER NOT NULL,
+                cantidad_restante  INTEGER NOT NULL,
+                costo_unitario     INTEGER NOT NULL,
+                fecha              TEXT NOT NULL,
+                FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                FOREIGN KEY (recepcion_id) REFERENCES recepciones (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                CHECK (cantidad_recibida > 0), CHECK (cantidad_restante >= 0), CHECK (costo_unitario >= 0),
+                CHECK (origen IN ('recepcion', 'inicial')),
+                CHECK (origen != 'recepcion' OR recepcion_id IS NOT NULL)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO lotes (id, producto_id, recepcion_id, origen, cantidad_recibida, cantidad_restante, costo_unitario, fecha)
+            SELECT id, producto_id, recepcion_id, 'recepcion', cantidad_recibida, cantidad_restante, costo_unitario, fecha
+            FROM lotes_old_origen
+            """
+        )
+        conn.execute("DROP TABLE lotes_old_origen")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_producto_id ON lotes (producto_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_producto_fecha ON lotes (producto_id, fecha)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_recepcion_id ON lotes (recepcion_id)")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA legacy_alter_table = OFF")
+
+    # Backfill unico: stock cargado antes de que existiera el sistema de lotes (ajustes/movimientos
+    # viejos sin recepcion) no tiene lote que lo respalde -- se le crea un lote "de arranque" por la
+    # diferencia, al costo de costo actual del producto y con fecha vieja para que FIFO lo consuma
+    # primero. Idempotente por producto: si ya tiene un lote 'inicial', no se vuelve a crear.
+    for fila_producto in conn.execute("SELECT id, precio_costo FROM productos"):
+        producto_id = fila_producto["id"]
+        ya_tiene_inicial = conn.execute(
+            "SELECT 1 FROM lotes WHERE producto_id = ? AND origen = 'inicial'", (producto_id,)
+        ).fetchone()
+        if ya_tiene_inicial:
+            continue
+        stock_actual = conn.execute(
+            "SELECT stock_actual FROM productos WHERE id = ?", (producto_id,)
+        ).fetchone()["stock_actual"]
+        suma_lotes = conn.execute(
+            "SELECT COALESCE(SUM(cantidad_restante), 0) AS total FROM lotes WHERE producto_id = ?", (producto_id,)
+        ).fetchone()["total"]
+        diferencia = stock_actual - suma_lotes
+        if diferencia > 0:
+            conn.execute(
+                """
+                INSERT INTO lotes (producto_id, recepcion_id, origen, cantidad_recibida, cantidad_restante, costo_unitario, fecha)
+                VALUES (?, NULL, 'inicial', ?, ?, ?, '1970-01-01T00:00:00')
+                """,
+                (producto_id, diferencia, diferencia, fila_producto["precio_costo"]),
+            )
 
     conn.execute(
         """
