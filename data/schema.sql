@@ -330,8 +330,9 @@ CREATE TABLE IF NOT EXISTS cc_cargos (
     proveedor_id          INTEGER,
     monto                 INTEGER NOT NULL,            -- escalado x100
     fecha                 TEXT NOT NULL,
-    origen                TEXT NOT NULL,               -- 'manual' | 'recepcion' (futuro: 'venta')
+    origen                TEXT NOT NULL,               -- 'manual' | 'recepcion' | 'venta'
     origen_recepcion_id   INTEGER,                     -- nullable: solo si origen = 'recepcion'
+    origen_venta_id       INTEGER,                     -- nullable: solo si origen = 'venta'
     observacion           TEXT,
     FOREIGN KEY (cliente_id) REFERENCES clientes (id)
         ON DELETE RESTRICT
@@ -342,10 +343,14 @@ CREATE TABLE IF NOT EXISTS cc_cargos (
     FOREIGN KEY (origen_recepcion_id) REFERENCES recepciones (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
+    FOREIGN KEY (origen_venta_id) REFERENCES ventas (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
     CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
     CHECK (monto > 0),
     CHECK (origen IN ('manual', 'recepcion', 'venta')),
-    CHECK (origen != 'recepcion' OR origen_recepcion_id IS NOT NULL)
+    CHECK (origen != 'recepcion' OR origen_recepcion_id IS NOT NULL),
+    CHECK (origen != 'venta' OR origen_venta_id IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS cc_pagos (
@@ -387,3 +392,99 @@ CREATE INDEX IF NOT EXISTS idx_cc_pagos_proveedor_id ON cc_pagos (proveedor_id);
 CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_pago_id ON cc_pago_aplicaciones (pago_id);
 CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_cargo_id ON cc_pago_aplicaciones (cargo_id);
 CREATE INDEX IF NOT EXISTS idx_lotes_recepcion_id ON lotes (recepcion_id);
+
+-- Fase 4: Ventas
+
+CREATE TABLE IF NOT EXISTS medios_pago (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre               TEXT NOT NULL UNIQUE,
+    es_cuenta_corriente  INTEGER NOT NULL DEFAULT 0,  -- si se marca, ese pago genera cargo en Cuentas Corrientes
+    activo               INTEGER NOT NULL DEFAULT 1,
+    CHECK (es_cuenta_corriente IN (0, 1)),
+    CHECK (activo IN (0, 1))
+);
+
+INSERT OR IGNORE INTO medios_pago (nombre, es_cuenta_corriente) VALUES
+    ('Efectivo', 0), ('Tarjeta', 0), ('Transferencia', 0), ('Cuenta corriente', 1);
+
+CREATE TABLE IF NOT EXISTS ventas (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero                      TEXT NOT NULL UNIQUE,               -- 'V-0001'
+    cliente_id                  INTEGER NOT NULL,                   -- siempre resuelto (auto-alta o generico)
+    lista_precio_id             INTEGER,                            -- nullable: sin lista, precio normal
+    estado                      TEXT NOT NULL DEFAULT 'pendiente',  -- pendiente|confirmada (una venta normal nace confirmada)
+    fecha                       TEXT NOT NULL,
+    fecha_confirmacion          TEXT,                               -- nullable: cuando paso a confirmada
+    iva_porcentaje              INTEGER,                            -- % IVA opcional; NULL = sin IVA
+    descuento_total_porcentaje  INTEGER,                            -- escalado x100, descuento manual sobre el total
+    observacion                 TEXT,
+    FOREIGN KEY (cliente_id) REFERENCES clientes (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    CHECK (estado IN ('pendiente', 'confirmada')),
+    CHECK (iva_porcentaje IS NULL OR iva_porcentaje >= 0),
+    CHECK (descuento_total_porcentaje IS NULL OR descuento_total_porcentaje >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS venta_items (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    venta_id                    INTEGER NOT NULL,
+    producto_id                 INTEGER,                  -- nullable: NULL si es item libre
+    descripcion_libre           TEXT,                      -- solo si producto_id es NULL
+    cantidad                    INTEGER NOT NULL,          -- escalado x1000
+    precio_unitario             INTEGER NOT NULL,          -- escalado x100, ya resuelto por la lista (o precio normal), antes de descuentos
+    descuento_item_porcentaje   INTEGER,                    -- escalado x100, descuento manual de esta linea puntual
+    FOREIGN KEY (venta_id) REFERENCES ventas (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (producto_id) REFERENCES productos (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CHECK (cantidad > 0),
+    CHECK (precio_unitario >= 0),
+    CHECK (descuento_item_porcentaje IS NULL OR descuento_item_porcentaje >= 0),
+    CHECK ((producto_id IS NULL) != (descripcion_libre IS NULL))
+);
+
+CREATE TABLE IF NOT EXISTS venta_item_lotes (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    venta_item_id    INTEGER NOT NULL,
+    lote_id          INTEGER NOT NULL,
+    cantidad         INTEGER NOT NULL,          -- escalado x1000, cuanto de ese lote se consumio para esta linea
+    costo_unitario   INTEGER NOT NULL,          -- escalado x100, snapshot del costo del lote al momento de vender
+    FOREIGN KEY (venta_item_id) REFERENCES venta_items (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (lote_id) REFERENCES lotes (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CHECK (cantidad > 0),
+    CHECK (costo_unitario >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS venta_pagos (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    venta_id       INTEGER NOT NULL,
+    medio_pago_id  INTEGER NOT NULL,
+    monto          INTEGER NOT NULL,            -- escalado x100
+    FOREIGN KEY (venta_id) REFERENCES ventas (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (medio_pago_id) REFERENCES medios_pago (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CHECK (monto > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ventas_cliente_id ON ventas (cliente_id);
+CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas (fecha);
+CREATE INDEX IF NOT EXISTS idx_ventas_estado ON ventas (estado);
+CREATE INDEX IF NOT EXISTS idx_venta_items_venta_id ON venta_items (venta_id);
+CREATE INDEX IF NOT EXISTS idx_venta_items_producto_id ON venta_items (producto_id);
+CREATE INDEX IF NOT EXISTS idx_venta_item_lotes_venta_item_id ON venta_item_lotes (venta_item_id);
+CREATE INDEX IF NOT EXISTS idx_venta_item_lotes_lote_id ON venta_item_lotes (lote_id);
+CREATE INDEX IF NOT EXISTS idx_venta_pagos_venta_id ON venta_pagos (venta_id);
+CREATE INDEX IF NOT EXISTS idx_venta_pagos_medio_pago_id ON venta_pagos (medio_pago_id);

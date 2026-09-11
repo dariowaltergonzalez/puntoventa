@@ -654,17 +654,25 @@ def _migrar(conn: sqlite3.Connection) -> None:
             fecha                 TEXT NOT NULL,
             origen                TEXT NOT NULL,
             origen_recepcion_id   INTEGER,
+            origen_venta_id       INTEGER,
             observacion           TEXT,
             FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
             FOREIGN KEY (proveedor_id) REFERENCES proveedores (id) ON DELETE RESTRICT ON UPDATE CASCADE,
             FOREIGN KEY (origen_recepcion_id) REFERENCES recepciones (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            FOREIGN KEY (origen_venta_id) REFERENCES ventas (id) ON DELETE RESTRICT ON UPDATE CASCADE,
             CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
             CHECK (monto > 0),
             CHECK (origen IN ('manual', 'recepcion', 'venta')),
-            CHECK (origen != 'recepcion' OR origen_recepcion_id IS NOT NULL)
+            CHECK (origen != 'recepcion' OR origen_recepcion_id IS NOT NULL),
+            CHECK (origen != 'venta' OR origen_venta_id IS NOT NULL)
         )
         """
     )
+    columnas_cc_cargos = {fila["name"] for fila in conn.execute("PRAGMA table_info(cc_cargos)")}
+    if "origen_venta_id" not in columnas_cc_cargos:
+        # 'ventas' se crea mas abajo en esta misma migracion, pero SQLite permite referencias
+        # hacia adelante en FOREIGN KEY (recien se valida cuando se inserta, no al crear la columna).
+        conn.execute("ALTER TABLE cc_cargos ADD COLUMN origen_venta_id INTEGER REFERENCES ventas (id)")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS cc_pagos (
@@ -701,3 +709,105 @@ def _migrar(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_pagos_proveedor_id ON cc_pagos (proveedor_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_pago_id ON cc_pago_aplicaciones (pago_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_cargo_id ON cc_pago_aplicaciones (cargo_id)")
+
+    # Fase 4: Ventas
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS medios_pago (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre               TEXT NOT NULL UNIQUE,
+            es_cuenta_corriente  INTEGER NOT NULL DEFAULT 0,
+            activo               INTEGER NOT NULL DEFAULT 1,
+            CHECK (es_cuenta_corriente IN (0, 1)),
+            CHECK (activo IN (0, 1))
+        )
+        """
+    )
+    for nombre_medio, es_cc in (
+        ("Efectivo", 0), ("Tarjeta", 0), ("Transferencia", 0), ("Cuenta corriente", 1),
+    ):
+        conn.execute(
+            "INSERT INTO medios_pago (nombre, es_cuenta_corriente) VALUES (?, ?) ON CONFLICT(nombre) DO NOTHING",
+            (nombre_medio, es_cc),
+        )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ventas (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero                      TEXT NOT NULL UNIQUE,
+            cliente_id                  INTEGER NOT NULL,
+            lista_precio_id             INTEGER,
+            estado                      TEXT NOT NULL DEFAULT 'pendiente',
+            fecha                       TEXT NOT NULL,
+            fecha_confirmacion          TEXT,
+            iva_porcentaje              INTEGER,
+            descuento_total_porcentaje  INTEGER,
+            observacion                 TEXT,
+            FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id) ON DELETE SET NULL ON UPDATE CASCADE,
+            CHECK (estado IN ('pendiente', 'confirmada')),
+            CHECK (iva_porcentaje IS NULL OR iva_porcentaje >= 0),
+            CHECK (descuento_total_porcentaje IS NULL OR descuento_total_porcentaje >= 0)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ventas_cliente_id ON ventas (cliente_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas (fecha)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ventas_estado ON ventas (estado)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS venta_items (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            venta_id                    INTEGER NOT NULL,
+            producto_id                 INTEGER,
+            descripcion_libre           TEXT,
+            cantidad                    INTEGER NOT NULL,
+            precio_unitario             INTEGER NOT NULL,
+            descuento_item_porcentaje   INTEGER,
+            FOREIGN KEY (venta_id) REFERENCES ventas (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            CHECK (cantidad > 0),
+            CHECK (precio_unitario >= 0),
+            CHECK (descuento_item_porcentaje IS NULL OR descuento_item_porcentaje >= 0),
+            CHECK ((producto_id IS NULL) != (descripcion_libre IS NULL))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_items_venta_id ON venta_items (venta_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_items_producto_id ON venta_items (producto_id)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS venta_item_lotes (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            venta_item_id    INTEGER NOT NULL,
+            lote_id          INTEGER NOT NULL,
+            cantidad         INTEGER NOT NULL,
+            costo_unitario   INTEGER NOT NULL,
+            FOREIGN KEY (venta_item_id) REFERENCES venta_items (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (lote_id) REFERENCES lotes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            CHECK (cantidad > 0),
+            CHECK (costo_unitario >= 0)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_item_lotes_venta_item_id ON venta_item_lotes (venta_item_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_item_lotes_lote_id ON venta_item_lotes (lote_id)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS venta_pagos (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            venta_id       INTEGER NOT NULL,
+            medio_pago_id  INTEGER NOT NULL,
+            monto          INTEGER NOT NULL,
+            FOREIGN KEY (venta_id) REFERENCES ventas (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (medio_pago_id) REFERENCES medios_pago (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            CHECK (monto > 0)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_pagos_venta_id ON venta_pagos (venta_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_pagos_medio_pago_id ON venta_pagos (medio_pago_id)")
