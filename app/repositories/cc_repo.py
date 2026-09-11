@@ -11,10 +11,12 @@ def crear_cargo(
     origen: str,
     origen_recepcion_id: int | None,
     observacion: str | None,
+    origen_venta_id: int | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> int:
     """Exactamente uno de cliente_id/proveedor_id. conn opcional: se usa con una conn ya abierta
-    cuando el cargo se genera automaticamente dentro de otra transaccion (ej. recepcion a credito)."""
+    cuando el cargo se genera automaticamente dentro de otra transaccion (ej. recepcion a credito,
+    venta con medio de pago 'cuenta corriente')."""
     conexion_propia = conn is None
     if conexion_propia:
         conn = get_connection()
@@ -22,10 +24,10 @@ def crear_cargo(
         cursor = conn.execute(
             """
             INSERT INTO cc_cargos
-                (cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id, observacion)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id, origen_venta_id, observacion)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id, observacion),
+            (cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id, origen_venta_id, observacion),
         )
         if conexion_propia:
             conn.commit()

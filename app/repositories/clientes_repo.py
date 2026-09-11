@@ -116,7 +116,15 @@ def obtener_por_razon_social(razon_social: str, conn: sqlite3.Connection | None 
     if conexion_propia:
         conn = get_connection()
     try:
-        return conn.execute("SELECT * FROM clientes WHERE razon_social = ?", (razon_social,)).fetchone()
+        return conn.execute(
+            """
+            SELECT c.*, ci.nombre AS condicion_iva_nombre
+            FROM clientes c
+            LEFT JOIN condiciones_iva ci ON ci.id = c.condicion_iva_id
+            WHERE c.razon_social = ?
+            """,
+            (razon_social,),
+        ).fetchone()
     finally:
         if conexion_propia:
             conn.close()
@@ -133,7 +141,15 @@ def obtener_o_crear_por_razon_social(razon_social: str, conn: sqlite3.Connection
             "INSERT INTO clientes (razon_social, activo) VALUES (?, 1) ON CONFLICT(razon_social) DO NOTHING",
             (razon_social,),
         )
-        return conn.execute("SELECT * FROM clientes WHERE razon_social = ?", (razon_social,)).fetchone()
+        return conn.execute(
+            """
+            SELECT c.*, ci.nombre AS condicion_iva_nombre
+            FROM clientes c
+            LEFT JOIN condiciones_iva ci ON ci.id = c.condicion_iva_id
+            WHERE c.razon_social = ?
+            """,
+            (razon_social,),
+        ).fetchone()
     finally:
         if conexion_propia:
             conn.close()

@@ -43,6 +43,7 @@ def _cargo_a_dict(fila: sqlite3.Row, saldo_pendiente: Decimal) -> dict:
         "fecha": fila["fecha"],
         "origen": fila["origen"],
         "origen_recepcion_id": fila["origen_recepcion_id"],
+        "origen_venta_id": fila["origen_venta_id"],
         "observacion": fila["observacion"],
     }
 

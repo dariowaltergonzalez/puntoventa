@@ -265,6 +265,13 @@ def obtener_o_crear_cliente_por_razon_social(razon_social: str) -> dict:
     return _a_dict(clientes_repo.obtener_o_crear_por_razon_social(razon_social))
 
 
+NOMBRE_CLIENTE_GENERICO = "Consumidor Final"
+
+
+def obtener_o_crear_cliente_generico() -> dict:
+    return _a_dict(clientes_repo.obtener_o_crear_por_razon_social(NOMBRE_CLIENTE_GENERICO))
+
+
 # ---- Contactos auxiliares ----
 
 def agregar_contacto(

@@ -76,3 +76,15 @@ class CargoNoEncontradoError(Exception):
 
 class MontoPagoInvalidoError(Exception):
     pass
+
+
+class MedioPagoDuplicadoError(Exception):
+    pass
+
+
+class MedioPagoNoEncontradoError(Exception):
+    pass
+
+
+class VentaNoEncontradaError(Exception):
+    pass
