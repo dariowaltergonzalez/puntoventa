@@ -5,6 +5,7 @@ from app.ui.clientes_view import ClientesView
 from app.ui.cuentas_corrientes_view import CuentasCorrientesView
 from app.ui.listas_precios_view import ListasPreciosView
 from app.ui.log_view import LogView
+from app.ui.medios_pago_view import MediosPagoView
 from app.ui.movimientos_view import MovimientosView
 from app.ui.ordenes_compra_view import OrdenesCompraView
 from app.ui.productos_view import ProductosView
@@ -12,7 +13,7 @@ from app.ui.proveedores_view import ProveedoresView
 from app.ui.stock_view import StockView
 
 # Agrupacion del menu por seccion (ver "Estructura del menu" en el plan de producto).
-# Cada pantalla se suma recien en su fase; por ahora Medios de Pago/Ventas no existen todavia.
+# Cada pantalla se suma recien en su fase; por ahora Ventas no existe todavia.
 GRUPOS_MENU = [
     ("Catalogo", [
         ("Categorias", ft.Icons.CATEGORY, CategoriasView),
@@ -27,6 +28,7 @@ GRUPOS_MENU = [
     ]),
     ("Cuentas", [
         ("Cuentas Corrientes", ft.Icons.ACCOUNT_BALANCE_WALLET, CuentasCorrientesView),
+        ("Medios de Pago", ft.Icons.PAYMENTS, MediosPagoView),
     ]),
     ("Consultas", [
         ("Stock", ft.Icons.BAR_CHART, StockView),
