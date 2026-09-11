@@ -47,6 +47,10 @@ def build_app(page: ft.Page) -> None:
     def seleccionar(indice: int) -> None:
         for i, (contenedor, _) in enumerate(items_menu):
             contenedor.bgcolor = COLOR_SELECCIONADO if i == indice else None
+        # Cada pantalla se reconstruye de cero al navegar -- si la pantalla anterior dejo un
+        # page.on_keyboard_event propio (atajos de teclado), hay que sacarlo antes de armar la
+        # nueva, si no las teclas quedarian disparando acciones de la pantalla vieja.
+        page.on_keyboard_event = None
         content.content = items_menu[indice][1](page)
         page.update()
 

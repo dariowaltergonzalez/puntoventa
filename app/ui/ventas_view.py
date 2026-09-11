@@ -147,8 +147,28 @@ def VentasView(page: ft.Page) -> ft.Control:
             actualizar_info_linea(linea)
             page.update()
 
+        async def submit_descripcion(e: ft.ControlEvent) -> None:
+            await precio_libre_field.focus()
+
+        async def submit_precio_libre(e: ft.ControlEvent) -> None:
+            await cantidad_field.focus()
+
+        async def submit_cantidad(e: ft.ControlEvent) -> None:
+            await descuento_field.focus()
+
+        async def submit_descuento(e: ft.ControlEvent) -> None:
+            # Enter en el ultimo campo de la linea agrega la siguiente sola y le pasa el foco --
+            # para poder cargar muchos items en fila sin soltar el teclado.
+            agregar_linea_venta()
+            if lineas_form:
+                await lineas_form[-1]["producto_dropdown"].focus()
+
         tipo_dropdown.on_select = cambiar_tipo
         producto_dropdown.on_select = cambiar_producto
+        descripcion_field.on_submit = submit_descripcion
+        precio_libre_field.on_submit = submit_precio_libre
+        cantidad_field.on_submit = submit_cantidad
+        descuento_field.on_submit = submit_descuento
 
         fila = ft.Column([
             ft.Row([tipo_dropdown, producto_dropdown, descripcion_field, precio_libre_field,
@@ -265,9 +285,22 @@ def VentasView(page: ft.Page) -> ft.Control:
                 vuelto_texto.value = ""
             page.update()
 
+        async def submit_monto(e: ft.ControlEvent) -> None:
+            # Si es efectivo, Enter pasa al campo de "recibio" para calcular el vuelto; si no,
+            # ya no falta nada mas que tipear -- Enter confirma la venta directamente.
+            if recibido_field.visible:
+                await recibido_field.focus()
+            else:
+                confirmar_venta_click(None)
+
+        def submit_recibido(e: ft.ControlEvent) -> None:
+            confirmar_venta_click(None)
+
         medio_dropdown.on_select = cambiar_medio
         recibido_field.on_change = calcular_vuelto
         monto_field.on_change = calcular_vuelto
+        monto_field.on_submit = submit_monto
+        recibido_field.on_submit = submit_recibido
 
         fila = ft.Row([medio_dropdown, monto_field, recibido_field, vuelto_texto, eliminar_button])
         linea = {"medio_dropdown": medio_dropdown, "monto_field": monto_field, "fila": fila}
@@ -314,6 +347,19 @@ def VentasView(page: ft.Page) -> ft.Control:
             mostrar_mensaje(str(ex))
 
     calcular_total_button.on_click = calcular_total_click
+
+    async def submit_iva(e: ft.ControlEvent) -> None:
+        await descuento_total_field.focus()
+
+    async def submit_descuento_total(e: ft.ControlEvent) -> None:
+        await observacion_field.focus()
+
+    def submit_observacion(e: ft.ControlEvent) -> None:
+        calcular_total_click(None)
+
+    iva_field.on_submit = submit_iva
+    descuento_total_field.on_submit = submit_descuento_total
+    observacion_field.on_submit = submit_observacion
 
     def confirmar_venta_click(e: ft.ControlEvent) -> None:
         try:
@@ -366,6 +412,11 @@ def VentasView(page: ft.Page) -> ft.Control:
     seccion_formulario = ft.Column(
         [
             ft.Text("Nueva venta", size=18, weight=ft.FontWeight.BOLD),
+            ft.Text(
+                "Enter pasa al siguiente campo. F1 Calcular total | F3 Agregar linea | "
+                "F2 Confirmar venta | F4 Agregar medio de pago",
+                size=11, color=ft.Colors.GREY_600,
+            ),
             ft.Row([cliente_dropdown, cliente_nuevo_field, cliente_generico_switch]),
             cliente_info_texto,
             lista_precio_dropdown,
@@ -495,6 +546,25 @@ def VentasView(page: ft.Page) -> ft.Control:
         seccion_detalle.visible = True
         refrescar_detalle()
         page.update()
+
+    # ================= ATAJOS DE TECLADO (F1-F4) =================
+    # Ojo: page.on_keyboard_event es global a la Page compartida por toda la app, no exclusivo de
+    # esta pantalla -- app_shell.py lo resetea a None al navegar a otra pantalla del menu, si no
+    # estas teclas seguirian disparando acciones de Ventas en cualquier otro lado.
+    def manejar_teclado(e: ft.KeyboardEvent) -> None:
+        if not seccion_formulario.visible:
+            return
+        tecla = (e.key or "").upper()
+        if tecla == "F1":
+            calcular_total_click(None)
+        elif tecla == "F2" and seccion_pago.visible:
+            confirmar_venta_click(None)
+        elif tecla == "F3" and not seccion_pago.visible:
+            agregar_linea_venta(None)
+        elif tecla == "F4" and seccion_pago.visible:
+            agregar_linea_pago(None)
+
+    page.on_keyboard_event = manejar_teclado
 
     refrescar_lista()
 
