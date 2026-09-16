@@ -5,6 +5,7 @@ from app.ui.app_shell import build_app
 
 def main(page: ft.Page) -> None:
     page.title = "Punto de Venta"
+    page.window.maximized = True
     build_app(page)
 
 
