@@ -803,11 +803,18 @@ def _migrar(conn: sqlite3.Connection) -> None:
             venta_id       INTEGER NOT NULL,
             medio_pago_id  INTEGER NOT NULL,
             monto          INTEGER NOT NULL,
+            recibido       INTEGER,
             FOREIGN KEY (venta_id) REFERENCES ventas (id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN KEY (medio_pago_id) REFERENCES medios_pago (id) ON DELETE RESTRICT ON UPDATE CASCADE,
-            CHECK (monto > 0)
+            CHECK (monto > 0),
+            CHECK (recibido IS NULL OR recibido >= monto)
         )
         """
     )
+    columnas_venta_pagos = {fila["name"] for fila in conn.execute("PRAGMA table_info(venta_pagos)")}
+    if "recibido" not in columnas_venta_pagos:
+        # Cuanto entrego el cliente en efectivo (para poder recordar despues con que billete pago
+        # y de donde salio el vuelto) -- NULL para medios sin vuelto (tarjeta, transferencia, cta cte).
+        conn.execute("ALTER TABLE venta_pagos ADD COLUMN recibido INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_pagos_venta_id ON venta_pagos (venta_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_pagos_medio_pago_id ON venta_pagos (medio_pago_id)")

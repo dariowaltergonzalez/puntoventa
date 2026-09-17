@@ -470,13 +470,15 @@ CREATE TABLE IF NOT EXISTS venta_pagos (
     venta_id       INTEGER NOT NULL,
     medio_pago_id  INTEGER NOT NULL,
     monto          INTEGER NOT NULL,            -- escalado x100
+    recibido       INTEGER,                     -- escalado x100; solo efectivo, NULL en el resto
     FOREIGN KEY (venta_id) REFERENCES ventas (id)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
     FOREIGN KEY (medio_pago_id) REFERENCES medios_pago (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
-    CHECK (monto > 0)
+    CHECK (monto > 0),
+    CHECK (recibido IS NULL OR recibido >= monto)
 );
 
 CREATE INDEX IF NOT EXISTS idx_ventas_cliente_id ON ventas (cliente_id);

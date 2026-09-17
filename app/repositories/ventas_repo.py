@@ -100,8 +100,8 @@ def crear_venta_confirmada(
         cargos_generados: list[int] = []
         for pago in pagos:
             conn.execute(
-                "INSERT INTO venta_pagos (venta_id, medio_pago_id, monto) VALUES (?, ?, ?)",
-                (venta_id, pago["medio_pago_id"], pago["monto"]),
+                "INSERT INTO venta_pagos (venta_id, medio_pago_id, monto, recibido) VALUES (?, ?, ?, ?)",
+                (venta_id, pago["medio_pago_id"], pago["monto"], pago.get("recibido")),
             )
             if pago.get("es_cuenta_corriente"):
                 cargo_id = cc_repo.crear_cargo(

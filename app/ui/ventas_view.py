@@ -986,7 +986,10 @@ def VentasView(page: ft.Page) -> ft.Control:
             mostrar_mensaje("No hay un medio de pago 'Efectivo' cargado en Medios de Pago", aviso=True)
             return
         aplicado = min(recibido, restante)
-        t["pagos"].append({"medio_pago_id": medio_efectivo["id"], "medio_nombre": medio_efectivo["nombre"], "monto": aplicado})
+        t["pagos"].append({
+            "medio_pago_id": medio_efectivo["id"], "medio_nombre": medio_efectivo["nombre"],
+            "monto": aplicado, "recibido": recibido,
+        })
         efectivo_box.visible = False
         recibido_field.value = ""
         refrescar_cobro()
@@ -1017,7 +1020,10 @@ def VentasView(page: ft.Page) -> ft.Control:
             return
         try:
             items = construir_items_ticket(t)
-            pagos = [{"medio_pago_id": p["medio_pago_id"], "monto": p["monto"]} for p in t["pagos"]]
+            pagos = [
+                {"medio_pago_id": p["medio_pago_id"], "monto": p["monto"], "recibido": p.get("recibido")}
+                for p in t["pagos"]
+            ]
             iva = parsear_decimal_ar_opcional(iva_field.value, "IVA")
             descuento_total = parsear_decimal_ar_opcional(descuento_total_field.value, "Descuento sobre el total")
             venta = ventas_service.crear_venta(
@@ -1091,7 +1097,9 @@ def VentasView(page: ft.Page) -> ft.Control:
         columns=[ft.DataColumn(ft.Text(t)) for t in ["Producto / Descripcion", "Cantidad", "Precio unit.", "% desc.", "Subtotal"]],
         rows=[],
     )
-    tabla_detalle_pagos = ft.DataTable(columns=[ft.DataColumn(ft.Text(t)) for t in ["Medio de pago", "Monto"]], rows=[])
+    tabla_detalle_pagos = ft.DataTable(
+        columns=[ft.DataColumn(ft.Text(t)) for t in ["Medio de pago", "Monto", "Recibio", "Vuelto"]], rows=[],
+    )
     detalle_total_texto = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
 
     def refrescar_detalle() -> None:
@@ -1124,6 +1132,8 @@ def VentasView(page: ft.Page) -> ft.Control:
             ft.DataRow(cells=[
                 ft.DataCell(ft.Text(p["medio_pago_nombre"] + (" (cta. cte.)" if p["es_cuenta_corriente"] else ""))),
                 ft.DataCell(ft.Text(formatear_precio(p["monto"]))),
+                ft.DataCell(ft.Text(formatear_precio(p["recibido"]) if p["recibido"] is not None else "-")),
+                ft.DataCell(ft.Text(formatear_precio(p["vuelto"]) if p["vuelto"] is not None else "-")),
             ])
             for p in venta["pagos"]
         ]

@@ -149,6 +149,10 @@ def calcular_totales(
 
 
 def _validar_pagos(pagos_entrada: list[dict], total_venta: Decimal) -> list[dict]:
+    """pago de entrada: {'medio_pago_id': int, 'monto': Decimal, 'recibido': Decimal|None}.
+    'recibido' es lo que el cliente entrego fisicamente (solo tiene sentido en efectivo, para
+    poder consultar despues con que billete pago y de donde salio el vuelto) -- opcional,
+    None para medios sin vuelto."""
     if not pagos_entrada:
         raise ValueError("La venta debe tener al menos un medio de pago")
     pagos_validados = []
@@ -161,10 +165,14 @@ def _validar_pagos(pagos_entrada: list[dict], total_venta: Decimal) -> list[dict
         monto = pago["monto"]
         if monto <= 0:
             raise ValueError("El monto de cada medio de pago debe ser mayor a cero")
+        recibido = pago.get("recibido")
+        if recibido is not None and recibido < monto:
+            raise ValueError("Lo recibido no puede ser menor al monto aplicado de ese medio de pago")
         suma += monto
         pagos_validados.append({
             "medio_pago_id": medio_pago_id,
             "monto": precio_a_entero(monto),
+            "recibido": precio_a_entero(recibido) if recibido is not None else None,
             "es_cuenta_corriente": medio["es_cuenta_corriente"],
         })
     if suma != total_venta:
@@ -291,12 +299,15 @@ def _item_a_dict(fila: sqlite3.Row) -> dict:
 
 
 def _pago_a_dict(fila: sqlite3.Row) -> dict:
+    recibido = entero_a_precio(fila["recibido"]) if fila["recibido"] is not None else None
     return {
         "id": fila["id"],
         "medio_pago_id": fila["medio_pago_id"],
         "medio_pago_nombre": fila["medio_pago_nombre"],
         "es_cuenta_corriente": bool(fila["es_cuenta_corriente"]),
         "monto": entero_a_precio(fila["monto"]),
+        "recibido": recibido,
+        "vuelto": (recibido - entero_a_precio(fila["monto"])) if recibido is not None else None,
     }
 
 
