@@ -247,6 +247,15 @@ def crear_venta(
         f"Se creo y confirmo la venta {resultado['numero']} a '{cliente['razon_social']}' "
         f"por {formatear_precio(totales['total'])}",
     )
+    cantidades_por_producto: dict[int, Decimal] = {}
+    for item in items_validados:
+        if item["producto_id"] is None:
+            continue
+        cantidad = entero_a_cantidad(item["cantidad"])
+        cantidades_por_producto[item["producto_id"]] = cantidades_por_producto.get(item["producto_id"], Decimal("0")) + cantidad
+    log_service.registrar_resumen_stock(
+        "venta", resultado["venta_id"], resultado["numero"], "egreso", cantidades_por_producto,
+    )
     if resultado["cargos_generados"]:
         log_service.registrar(
             "cliente", cliente["id"],

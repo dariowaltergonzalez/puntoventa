@@ -2,7 +2,10 @@ import flet as ft
 
 from app.services import log_service
 
-ENTIDADES = ["categoria", "producto", "proveedor", "sistema"]
+ENTIDADES = [
+    "venta", "orden_compra", "producto", "cliente", "proveedor",
+    "lista_precio", "medio_pago", "categoria", "sistema",
+]
 
 
 def LogView(page: ft.Page) -> ft.Control:

@@ -106,6 +106,15 @@ def confirmar_recepcion(
         "orden_compra", resultado["orden_compra_id"],
         f"Se registro una recepcion en {oc['numero']} (nuevo estado: {resultado['estado_orden_compra']})",
     )
+    cantidades_por_producto: dict[int, Decimal] = {}
+    for item in items_validados:
+        if item["producto_id"] is None:
+            continue
+        cantidad = entero_a_cantidad(item["cantidad_recibida"])
+        cantidades_por_producto[item["producto_id"]] = cantidades_por_producto.get(item["producto_id"], Decimal("0")) + cantidad
+    log_service.registrar_resumen_stock(
+        "orden_compra", resultado["orden_compra_id"], oc["numero"], "ingreso", cantidades_por_producto,
+    )
     if resultado.get("cargo_id") is not None:
         log_service.registrar(
             "proveedor", oc["proveedor_id"],
