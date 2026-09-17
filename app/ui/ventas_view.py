@@ -315,7 +315,7 @@ def VentasView(page: ft.Page) -> ft.Control:
     _estilizar_textfield_rail(codigo_field)
     _estilizar_textfield_rail(cant_field)
     resultados_texto = ft.Text("", size=11, color=COLOR_TEXT_ON_RAIL_SOFT)
-    rapidos_column = ft.Column([], spacing=6, scroll=ft.ScrollMode.AUTO, expand=True)
+    rapidos_column = ft.Column([], spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
 
     def coincide_producto(p: dict, texto: str) -> bool:
         if not texto:
@@ -335,25 +335,26 @@ def VentasView(page: ft.Page) -> ft.Control:
             bajo = p["stock_minimo"] > 0 and p["stock_actual"] < p["stock_minimo"]
             sin_precio = p["precio_venta"] <= 0
             precio_control = (
-                ft.Text("Sin precio ⚠", size=11, weight=ft.FontWeight.BOLD, color=COLOR_WARNING)
+                ft.Text("Sin precio ⚠", size=13, weight=ft.FontWeight.BOLD, color=COLOR_WARNING)
                 if sin_precio else
-                ft.Text(money(p["precio_venta"]), size=12.5, weight=ft.FontWeight.BOLD, color="#6fe3d4")
+                ft.Text(money(p["precio_venta"]), size=15, weight=ft.FontWeight.BOLD, color="#6fe3d4")
             )
             tiles.append(
                 ft.Container(
-                    bgcolor=COLOR_RAIL_SOFT, border_radius=10, padding=10, ink=True,
+                    bgcolor=COLOR_RAIL_SOFT, border_radius=10, padding=12, ink=True,
                     opacity=0.55 if sin_precio else 1,
                     on_click=lambda e, prod=p: agregar_desde_rapido(prod),
                     content=ft.Row(
                         [
                             ft.Column(
                                 [
-                                    ft.Text(p["nombre"], size=12.5, weight=ft.FontWeight.BOLD, color=COLOR_TEXT_ON_RAIL),
-                                    ft.Text(p["codigo"], size=10, color=COLOR_TEXT_ON_RAIL_SOFT),
+                                    ft.Text(p["nombre"], size=14.5, weight=ft.FontWeight.BOLD, color=COLOR_TEXT_ON_RAIL),
+                                    ft.Text(p["codigo"], size=13, weight=ft.FontWeight.W_600, color=COLOR_TEXT_ON_RAIL_SOFT),
                                     ft.Text(("⚠ " if bajo else "") + f"Stock: {formatear_cantidad(p['stock_actual'])}",
-                                             size=9.5, color=COLOR_WARNING if bajo else COLOR_TEXT_ON_RAIL_SOFT),
+                                             size=12.5, weight=ft.FontWeight.W_600,
+                                             color=COLOR_WARNING if bajo else COLOR_TEXT_ON_RAIL_SOFT),
                                 ],
-                                expand=True, spacing=1,
+                                expand=True, spacing=2,
                             ),
                             precio_control,
                         ],
@@ -406,7 +407,7 @@ def VentasView(page: ft.Page) -> ft.Control:
     )
 
     rail = ft.Container(
-        width=300, bgcolor=COLOR_RAIL, padding=16,
+        width=340, bgcolor=COLOR_RAIL, padding=16,
         content=ft.Column(
             [
                 cliente_dropdown, cliente_nuevo_field, cliente_generico_switch, cliente_nota_texto,
