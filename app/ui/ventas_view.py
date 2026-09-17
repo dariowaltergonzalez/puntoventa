@@ -11,6 +11,7 @@ from app.services.exceptions import (
     MontoPagoInvalidoError,
     ProductoInactivoError,
     ProductoNoEncontradoError,
+    ProductoSinPrecioError,
     StockInsuficienteError,
 )
 from app.shared.money import formatear_cantidad, formatear_porcentaje, formatear_precio
@@ -20,7 +21,7 @@ from app.ui.listados import Paginador, coincide_texto, filtrar
 EXCEPCIONES_NEGOCIO = (
     ClienteNoEncontradoError, LineasVaciasError, ListaPrecioNoEncontradaError,
     MedioPagoNoEncontradoError, MontoPagoInvalidoError, ProductoInactivoError,
-    ProductoNoEncontradoError, StockInsuficienteError, ValueError,
+    ProductoNoEncontradoError, ProductoSinPrecioError, StockInsuficienteError, ValueError,
 )
 
 # Paleta "Caja Rapida" (ver mockup aprobado por Dario) -- especifica de esta pantalla, no es
@@ -332,9 +333,16 @@ def VentasView(page: ft.Page) -> ft.Control:
         tiles = []
         for p in lista[:80]:
             bajo = p["stock_minimo"] > 0 and p["stock_actual"] < p["stock_minimo"]
+            sin_precio = p["precio_venta"] <= 0
+            precio_control = (
+                ft.Text("Sin precio ⚠", size=11, weight=ft.FontWeight.BOLD, color=COLOR_WARNING)
+                if sin_precio else
+                ft.Text(money(p["precio_venta"]), size=12.5, weight=ft.FontWeight.BOLD, color="#6fe3d4")
+            )
             tiles.append(
                 ft.Container(
                     bgcolor=COLOR_RAIL_SOFT, border_radius=10, padding=10, ink=True,
+                    opacity=0.55 if sin_precio else 1,
                     on_click=lambda e, prod=p: agregar_desde_rapido(prod),
                     content=ft.Row(
                         [
@@ -347,7 +355,7 @@ def VentasView(page: ft.Page) -> ft.Control:
                                 ],
                                 expand=True, spacing=1,
                             ),
-                            ft.Text(money(p["precio_venta"]), size=12.5, weight=ft.FontWeight.BOLD, color="#6fe3d4"),
+                            precio_control,
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
@@ -625,6 +633,12 @@ def VentasView(page: ft.Page) -> ft.Control:
         return linea
 
     def agregar_producto(t: dict, producto: dict, cantidad: Decimal) -> None:
+        if resolver_precio(t, producto["id"], producto) <= 0:
+            mostrar_mensaje(
+                f"'{producto['nombre']}' no tiene precio de venta cargado -- completalo en Productos antes de venderlo",
+                aviso=True,
+            )
+            return
         ya = sum((l["cantidad"] for l in t["lineas"] if l["tipo"] == "producto" and l["producto_id"] == producto["id"]),
                  Decimal("0"))
         disponible = producto["stock_actual"] - ya

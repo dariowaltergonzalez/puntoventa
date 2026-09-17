@@ -12,6 +12,7 @@ from app.services.exceptions import (
     MontoPagoInvalidoError,
     ProductoInactivoError,
     ProductoNoEncontradoError,
+    ProductoSinPrecioError,
     StockInsuficienteError,
     VentaNoEncontradaError,
 )
@@ -79,6 +80,11 @@ def _validar_items(items_entrada: list[dict], lista_precio_id: int | None) -> li
                 precio_unitario = listas_precios_service.calcular_precio_producto(producto_id, lista_precio_id)
             else:
                 precio_unitario = entero_a_precio(producto["precio_venta"])
+            if precio_unitario <= 0:
+                raise ProductoSinPrecioError(
+                    f"El producto '{producto['nombre']}' no tiene precio de venta cargado -- "
+                    f"complete el precio en Productos antes de venderlo"
+                )
 
             stock_disponible = entero_a_cantidad(producto["stock_actual"])
             reservado = cantidad_reservada_por_producto.get(producto_id, Decimal("0")) + cantidad

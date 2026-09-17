@@ -22,6 +22,10 @@ class ProductoInactivoError(Exception):
     pass
 
 
+class ProductoSinPrecioError(Exception):
+    pass
+
+
 class StockInsuficienteError(Exception):
     pass
 
