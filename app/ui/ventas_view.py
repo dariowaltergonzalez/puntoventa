@@ -838,7 +838,9 @@ def VentasView(page: ft.Page) -> ft.Control:
     efectivo_box = ft.Row([recibido_field, vuelto_texto], visible=False, spacing=20,
                            vertical_alignment=ft.CrossAxisAlignment.CENTER)
     pagos_aplicados_column = ft.Column([], spacing=6)
-    btn_confirmar_cobro = ft.ElevatedButton("Confirmar cobro", bgcolor=COLOR_SUCCESS, color=ft.Colors.WHITE, disabled=True)
+    btn_confirmar_cobro = ft.ElevatedButton(
+        "Confirmar cobro  (F12)", bgcolor=COLOR_SUCCESS, color=ft.Colors.WHITE, disabled=True,
+    )
     btn_cerrar_cobro = ft.IconButton(ft.Icons.CLOSE)
 
     cobro_atajos_texto = ft.Text("F1-F4 elige el medio de pago  ·  ESC vuelve al carrito", size=10.5, color=COLOR_TEXT_SOFT)
@@ -945,6 +947,10 @@ def VentasView(page: ft.Page) -> ft.Control:
         t["pagos"].append({"medio_pago_id": medio["id"], "medio_nombre": medio["nombre"], "monto": restante})
         refrescar_cobro()
         page.update()
+        if not btn_confirmar_cobro.disabled:
+            # Queda cubierto con un solo medio -- foco directo al boton para que un Enter mas
+            # lo confirme, sin tener que soltar el teclado para clickearlo.
+            await btn_confirmar_cobro.focus()
 
     def construir_boton_medio(m: dict, atajo: str | None) -> ft.Control:
         # ElevatedButton (no Container+ink) a proposito: es un control real de formulario,
@@ -981,7 +987,7 @@ def VentasView(page: ft.Page) -> ft.Control:
             vuelto_texto.value = "Vuelto: $ 0,00"
         page.update()
 
-    def confirmar_efectivo(e: ft.ControlEvent | None = None) -> None:
+    async def confirmar_efectivo(e: ft.ControlEvent | None = None) -> None:
         t = activo()
         restante = restante_cobro(t)
         if restante <= 0:
@@ -1009,6 +1015,8 @@ def VentasView(page: ft.Page) -> ft.Control:
         recibido_field.value = ""
         refrescar_cobro()
         page.update()
+        if not btn_confirmar_cobro.disabled:
+            await btn_confirmar_cobro.focus()
 
     recibido_field.on_change = on_recibido_change
     recibido_field.on_submit = confirmar_efectivo

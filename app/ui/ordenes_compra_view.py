@@ -331,6 +331,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             title=titulo,
             controls=[items_tabla],
             tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
+            affinity=ft.TileAffinity.LEADING,
         )
 
     def refrescar_lista(e: ft.ControlEvent | None = None) -> None:

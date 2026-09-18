@@ -28,6 +28,7 @@ def StockView(page: ft.Page) -> ft.Control:
                          weight=ft.FontWeight.BOLD if stock_bajo else None),
                 width=100,
             ),
+            ft.Container(ft.Text(formatear_cantidad(p["stock_minimo"]), color=color), width=100),
         ])
         lotes = lotes_service.listar_lotes_producto(p["id"])
         cantidad_sin_lote = p["stock_actual"] - sum(l["cantidad_restante"] for l in lotes)
@@ -55,13 +56,14 @@ def StockView(page: ft.Page) -> ft.Control:
             )
         tabla_lotes = ft.DataTable(
             columns=[ft.DataColumn(ft.Text(t)) for t in
-                     ["Fecha recepcion", "OC", "Remito", "Cant. recibida", "Cant. restante", "Costo"]],
+                     ["Fecha recepcion", "OC", "Remito", "Cant. recibida", "Disponible", "Costo"]],
             rows=filas_lotes,
         )
         return ft.ExpansionTile(
             title=titulo,
             controls=[tabla_lotes],
             tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
+            affinity=ft.TileAffinity.LEADING,
         )
 
     def refrescar_categorias() -> None:
@@ -108,6 +110,7 @@ def StockView(page: ft.Page) -> ft.Control:
         ft.Container(ft.Text("Nombre", weight=ft.FontWeight.BOLD), width=250),
         ft.Container(ft.Text("Unidad", weight=ft.FontWeight.BOLD), width=80),
         ft.Container(ft.Text("Stock actual", weight=ft.FontWeight.BOLD), width=100),
+        ft.Container(ft.Text("Stock minimo", weight=ft.FontWeight.BOLD), width=100),
     ])
 
     return ft.Column(
