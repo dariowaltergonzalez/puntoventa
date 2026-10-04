@@ -10,6 +10,7 @@ from app.services.exceptions import (
     ProductoNoEncontradoError,
 )
 from app.shared.money import formatear_cantidad, formatear_precio
+from app.ui.listados import Paginador, con_scroll_horizontal
 
 
 def ProductosView(page: ft.Page) -> ft.Control:
@@ -49,6 +50,8 @@ def ProductosView(page: ft.Page) -> ft.Control:
     )
 
     editando_id = None
+
+    paginador = Paginador(on_cambio=lambda: refrescar_tabla())
 
     def mostrar_error(mensaje: str) -> None:
         page.show_dialog(ft.SnackBar(ft.Text(mensaje)))
@@ -100,20 +103,12 @@ def ProductosView(page: ft.Page) -> ft.Control:
         guardar_button_texto.value = "Agregar producto"
         cancelar_button.visible = False
 
-    def coincide_busqueda(producto: dict, texto: str) -> bool:
-        texto = texto.strip().lower()
-        if not texto:
-            return True
-        if texto in producto["nombre"].lower() or texto in producto["codigo"].lower():
-            return True
-        if producto["codigo_barra"] and texto in producto["codigo_barra"].lower():
-            return True
-        return False
-
     def refrescar_tabla() -> None:
-        productos = [
-            p for p in productos_service.listar_productos() if coincide_busqueda(p, buscador_field.value or "")
-        ]
+        resultado = productos_service.listar_productos_pagina(
+            pagina=paginador.pagina_actual, tamano_pagina=paginador.tamano_pagina,
+            texto=buscador_field.value or None,
+        )
+        paginador.fijar_total(resultado["total"])
         tabla.rows = [
             ft.DataRow(
                 cells=[
@@ -133,7 +128,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
                     ),
                 ]
             )
-            for p in productos
+            for p in resultado["items"]
         ]
         page.update()
 
@@ -230,7 +225,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
     refrescar_proveedores()
     refrescar_tabla()
 
-    return ft.Column(
+    encabezado = ft.Column(
         [
             ft.Text("Productos", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([codigo_field, nombre_field, unidad_field]),
@@ -239,8 +234,20 @@ def ProductosView(page: ft.Page) -> ft.Control:
             ft.Row([descripcion_field]),
             ft.Row([guardar_button, cancelar_button]),
             ft.Row([buscador_field]),
-            tabla,
+        ],
+        spacing=10,
+    )
+
+    zona_tabla = ft.Column(
+        [
+            con_scroll_horizontal(tabla),
+            paginador.controles,
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=10,
     )
+
+    # encabezado sin scroll propio (siempre visible) + zona_tabla con su scroll aparte, asi el
+    # formulario no se va de la pantalla al desplazarse por una lista larga de productos.
+    return ft.Column([encabezado, zona_tabla], expand=True, spacing=10)

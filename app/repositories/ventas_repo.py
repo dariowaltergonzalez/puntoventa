@@ -2,6 +2,7 @@ import sqlite3
 
 from app.db.connection import get_connection
 from app.repositories import cc_repo, contadores_repo, movimientos_repo
+from app.repositories.paginacion import paginar
 
 
 def _consumir_fifo(conn: sqlite3.Connection, producto_id: int, cantidad_necesaria: int) -> list[dict]:
@@ -202,5 +203,37 @@ def listar(estado: str | None = None, cliente_id: int | None = None) -> list[sql
             sql += " WHERE " + " AND ".join(condiciones)
         sql += " ORDER BY fecha DESC, id DESC"
         return conn.execute(sql, parametros).fetchall()
+    finally:
+        conn.close()
+
+
+def listar_pagina(
+    pagina: int, tamano_pagina: int, texto: str | None = None,
+    estado: str | None = None, cliente_id: int | None = None,
+) -> tuple[list[sqlite3.Row], int]:
+    """Version paginada de `listar` -- esa trae TODAS las ventas de la historia del negocio
+    sin limite; esta solo pide la pagina pedida. 'texto' busca por numero de venta o razon
+    social del cliente (de ahi el JOIN, que 'listar' no necesita)."""
+    conn = get_connection()
+    try:
+        condiciones = []
+        parametros = []
+        if estado:
+            condiciones.append("v.estado = ?")
+            parametros.append(estado)
+        if cliente_id is not None:
+            condiciones.append("v.cliente_id = ?")
+            parametros.append(cliente_id)
+        if texto:
+            condiciones.append("(v.numero LIKE ? OR c.razon_social LIKE ?)")
+            comodin = f"%{texto}%"
+            parametros.extend([comodin, comodin])
+
+        sql = "SELECT v.* FROM ventas v LEFT JOIN clientes c ON c.id = v.cliente_id"
+        if condiciones:
+            sql += " WHERE " + " AND ".join(condiciones)
+        sql += " ORDER BY v.fecha DESC, v.id DESC"
+
+        return paginar(conn, sql, parametros, pagina, tamano_pagina)
     finally:
         conn.close()

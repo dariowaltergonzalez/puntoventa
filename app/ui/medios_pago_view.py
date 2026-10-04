@@ -2,6 +2,7 @@ import flet as ft
 
 from app.services import medios_pago_service
 from app.services.exceptions import MedioPagoDuplicadoError, MedioPagoNoEncontradoError
+from app.ui.listados import con_scroll_horizontal
 
 EXCEPCIONES_NEGOCIO = (MedioPagoDuplicadoError, MedioPagoNoEncontradoError, ValueError)
 
@@ -95,7 +96,7 @@ def MediosPagoView(page: ft.Page) -> ft.Control:
             ft.Text("Medios de Pago", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([nombre_field, cuenta_corriente_switch, activo_switch]),
             ft.Row([guardar_button, cancelar_button]),
-            tabla,
+            con_scroll_horizontal(tabla),
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,

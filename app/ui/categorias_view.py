@@ -2,6 +2,7 @@ import flet as ft
 
 from app.services import categorias_service
 from app.services.exceptions import CategoriaDuplicadaError, CategoriaNoEncontradaError
+from app.ui.listados import con_scroll_horizontal
 
 
 def CategoriasView(page: ft.Page) -> ft.Control:
@@ -80,7 +81,7 @@ def CategoriasView(page: ft.Page) -> ft.Control:
         [
             ft.Text("Categorias", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([nombre_field, guardar_button, cancelar_button]),
-            tabla,
+            con_scroll_horizontal(tabla),
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,

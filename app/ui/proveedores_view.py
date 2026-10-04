@@ -2,6 +2,7 @@ import flet as ft
 
 from app.services import proveedores_service
 from app.services.exceptions import ProveedorDuplicadoError, ProveedorNoEncontradoError
+from app.ui.listados import con_scroll_horizontal
 
 
 def ProveedoresView(page: ft.Page) -> ft.Control:
@@ -148,7 +149,7 @@ def ProveedoresView(page: ft.Page) -> ft.Control:
             ft.Row([observaciones_field]),
             ft.Row([guardar_button, cancelar_button]),
             ft.Row([buscador_field]),
-            tabla,
+            con_scroll_horizontal(tabla),
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,

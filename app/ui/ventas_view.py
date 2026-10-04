@@ -16,7 +16,7 @@ from app.services.exceptions import (
 )
 from app.shared.money import formatear_cantidad, formatear_porcentaje, formatear_precio
 from app.ui.campos import FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
-from app.ui.listados import Paginador, coincide_texto, filtrar
+from app.ui.listados import Paginador, con_scroll_horizontal
 from app.ui.theme import (
     COLOR_ACCENT,
     COLOR_ACCENT_STRONG,
@@ -1079,11 +1079,11 @@ def VentasView(page: ft.Page) -> ft.Control:
     paginador = Paginador(on_cambio=lambda: refrescar_lista_historial())
 
     def refrescar_lista_historial(e: ft.ControlEvent | None = None) -> None:
-        todas = ventas_service.listar_ventas()
-        filtradas = filtrar(todas, [
-            lambda v: coincide_texto(v["numero"], buscador_field.value) or coincide_texto(v["cliente_nombre"], buscador_field.value),
-        ])
-        pagina = paginador.aplicar(filtradas)
+        resultado = ventas_service.listar_ventas_pagina(
+            pagina=paginador.pagina_actual, tamano_pagina=paginador.tamano_pagina,
+            texto=buscador_field.value or None,
+        )
+        paginador.fijar_total(resultado["total"])
         tabla_historial.rows = [
             ft.DataRow(cells=[
                 ft.DataCell(ft.Text(v["numero"])),
@@ -1093,7 +1093,7 @@ def VentasView(page: ft.Page) -> ft.Control:
                 ft.DataCell(ft.IconButton(ft.Icons.VISIBILITY, tooltip="Ver detalle", data=v["id"],
                                             on_click=lambda e: ir_a_detalle_historial(e.control.data))),
             ])
-            for v in pagina
+            for v in resultado["items"]
         ]
         page.update()
 
@@ -1104,7 +1104,7 @@ def VentasView(page: ft.Page) -> ft.Control:
             ft.Row([ft.Text("Ventas confirmadas", size=20, weight=ft.FontWeight.BOLD),
                     ft.Container(expand=True), ft.TextButton("Volver a la caja", on_click=lambda e: mostrar_caja())]),
             ft.Row([buscador_field]),
-            tabla_historial,
+            con_scroll_horizontal(tabla_historial),
             paginador.controles,
         ],
         visible=False, expand=True, scroll=ft.ScrollMode.AUTO,
@@ -1165,8 +1165,8 @@ def VentasView(page: ft.Page) -> ft.Control:
         [
             detalle_titulo, detalle_info,
             ft.TextButton("Volver al listado", on_click=lambda e: mostrar_historial()),
-            ft.Text("Items", weight=ft.FontWeight.BOLD), tabla_detalle_items,
-            ft.Text("Pagos", weight=ft.FontWeight.BOLD), tabla_detalle_pagos,
+            ft.Text("Items", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_items),
+            ft.Text("Pagos", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_pagos),
             detalle_total_texto,
         ],
         visible=False, expand=True, scroll=ft.ScrollMode.AUTO, spacing=8,

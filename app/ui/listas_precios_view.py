@@ -11,6 +11,7 @@ from app.services.exceptions import (
 )
 from app.shared.money import formatear_precio, formatear_porcentaje
 from app.ui.campos import FILTRO_DECIMALES_CON_SIGNO, aplicar_mascara_moneda, parsear_decimal_ar_opcional
+from app.ui.listados import con_scroll_horizontal
 
 EXCEPCIONES_NEGOCIO = (
     CategoriaNoEncontradaError, ListaPrecioDuplicadaError, ListaPrecioNoEncontradaError,
@@ -59,7 +60,7 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
     seccion_lista = ft.Column([
         ft.Text("Listas de precios", size=20, weight=ft.FontWeight.BOLD),
         ft.Row([nueva_lista_button]),
-        tabla_lista,
+        con_scroll_horizontal(tabla_lista),
     ])
 
     # ================= SECCION FORMULARIO =================
@@ -235,10 +236,10 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
             detalle_info,
             ft.Row([editar_button, volver_button]),
             ft.Text("% especial por categoria (pisa el % general para esa categoria)", weight=ft.FontWeight.BOLD),
-            tabla_categorias,
+            con_scroll_horizontal(tabla_categorias),
             ft.Row([categoria_dropdown, categoria_porcentaje_field, agregar_categoria_button]),
             ft.Text("Precio manual por producto (pisa todo lo demas para ese producto)", weight=ft.FontWeight.BOLD),
-            tabla_productos,
+            con_scroll_horizontal(tabla_productos),
             ft.Row([producto_dropdown, producto_precio_field, agregar_producto_button]),
         ],
         visible=False,

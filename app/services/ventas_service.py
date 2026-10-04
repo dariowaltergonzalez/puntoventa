@@ -372,6 +372,18 @@ def listar_ventas(estado: str | None = None, cliente_id: int | None = None) -> l
     return [obtener_venta(f["id"]) for f in ventas_repo.listar(estado=estado, cliente_id=cliente_id)]
 
 
+def listar_ventas_pagina(
+    pagina: int, tamano_pagina: int, texto: str | None = None,
+    estado: str | None = None, cliente_id: int | None = None,
+) -> dict:
+    """Version paginada de `listar_ventas` -- esa recalcula el detalle completo (items, pagos,
+    totales) de TODAS las ventas de la historia en cada refresco, aunque la pantalla solo
+    muestre numero/cliente/fecha/total de una pagina a la vez. Esta solo hace ese calculo caro
+    para las ventas de la pagina pedida. Devuelve {'items': [...], 'total': N}."""
+    filas, total = ventas_repo.listar_pagina(pagina, tamano_pagina, texto, estado, cliente_id)
+    return {"items": [obtener_venta(f["id"]) for f in filas], "total": total}
+
+
 def calcular_ganancia_venta(venta: dict) -> Decimal:
     """Ganancia real: precio de venta (ya con descuentos aplicados a nivel linea) menos el costo
     real de los lotes efectivamente consumidos. Se calcula siempre al momento, nunca se guarda."""

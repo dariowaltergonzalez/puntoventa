@@ -17,7 +17,7 @@ from app.ui.campos import (
     aplicar_mascara_moneda,
     parsear_decimal_ar_opcional,
 )
-from app.ui.listados import Paginador, coincide_exacto, coincide_texto, filtrar
+from app.ui.listados import Paginador, coincide_exacto, coincide_texto, con_scroll_horizontal, filtrar
 
 EXCEPCIONES_NEGOCIO = (
     ClienteDuplicadoError, ClienteNoEncontradoError, CondicionIvaNoEncontradaError,
@@ -99,7 +99,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
     seccion_lista = ft.Column([
         ft.Text("Clientes", size=20, weight=ft.FontWeight.BOLD),
         ft.Row([buscador_field, activo_filtro_dropdown, nuevo_cliente_button]),
-        tabla_lista,
+        con_scroll_horizontal(tabla_lista),
         paginador.controles,
     ])
 
@@ -393,11 +393,11 @@ def ClientesView(page: ft.Page) -> ft.Control:
             detalle_info,
             ft.Row([editar_button, volver_button]),
             ft.Text("Contactos auxiliares", weight=ft.FontWeight.BOLD),
-            tabla_contactos,
+            con_scroll_horizontal(tabla_contactos),
             ft.Row([contacto_nombre_field, contacto_sector_field, contacto_email_field, contacto_telefono_field,
                     contacto_principal_switch, agregar_contacto_button]),
             ft.Text("Listas de precios asignadas (por orden de prioridad)", weight=ft.FontWeight.BOLD),
-            tabla_listas_cliente,
+            con_scroll_horizontal(tabla_listas_cliente),
             ft.Row([listas_dropdown, agregar_lista_button]),
         ],
         visible=False,

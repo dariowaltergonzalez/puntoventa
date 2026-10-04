@@ -170,3 +170,15 @@ def obtener_producto_por_codigo(codigo: str) -> dict | None:
 
 def listar_productos(solo_activos: bool = False, categoria_id: int | None = None) -> list[dict]:
     return [_a_dict(fila) for fila in productos_repo.listar(solo_activos, categoria_id)]
+
+
+def listar_productos_pagina(
+    pagina: int, tamano_pagina: int, texto: str | None = None,
+    solo_activos: bool = False, categoria_id: int | None = None,
+) -> dict:
+    """Para catalogos grandes: trae solo la pagina pedida en vez de todos los productos.
+    Devuelve {'items': [...], 'total': N} -- 'total' es el total de registros que matchean
+    el filtro (sin paginar), lo que necesita el Paginador de la UI para saber cuantas
+    paginas hay en total."""
+    filas, total = productos_repo.listar_pagina(pagina, tamano_pagina, texto, solo_activos, categoria_id)
+    return {"items": [_a_dict(fila) for fila in filas], "total": total}

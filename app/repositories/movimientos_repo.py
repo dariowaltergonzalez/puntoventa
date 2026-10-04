@@ -2,6 +2,7 @@ import sqlite3
 from datetime import datetime
 
 from app.db.connection import get_connection
+from app.repositories.paginacion import paginar
 
 
 def registrar_movimiento_y_actualizar_stock(
@@ -113,6 +114,36 @@ def listar(
         sql += " ORDER BY fecha DESC"
 
         return conn.execute(sql, parametros).fetchall()
+    finally:
+        conn.close()
+
+
+def listar_pagina(
+    pagina: int, tamano_pagina: int,
+    desde: str | None = None, hasta: str | None = None, tipo: str | None = None,
+) -> tuple[list[sqlite3.Row], int]:
+    """Version paginada de `listar` -- esa trae TODOS los movimientos sin limite (crece sin
+    techo con cada venta/compra/ajuste); esta solo pide la pagina pedida."""
+    conn = get_connection()
+    try:
+        condiciones = []
+        parametros = []
+        if desde is not None:
+            condiciones.append("fecha >= ?")
+            parametros.append(desde)
+        if hasta is not None:
+            condiciones.append("fecha <= ?")
+            parametros.append(hasta)
+        if tipo is not None:
+            condiciones.append("tipo = ?")
+            parametros.append(tipo)
+
+        sql = "SELECT * FROM movimientos"
+        if condiciones:
+            sql += " WHERE " + " AND ".join(condiciones)
+        sql += " ORDER BY fecha DESC"
+
+        return paginar(conn, sql, parametros, pagina, tamano_pagina)
     finally:
         conn.close()
 

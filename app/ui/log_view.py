@@ -1,6 +1,7 @@
 import flet as ft
 
 from app.services import log_service
+from app.ui.listados import Paginador, con_scroll_horizontal
 
 ENTIDADES = [
     "venta", "orden_compra", "producto", "cliente", "proveedor",
@@ -26,9 +27,15 @@ def LogView(page: ft.Page) -> ft.Control:
         rows=[],
     )
 
+    paginador = Paginador(on_cambio=lambda: refrescar_tabla())
+
     def refrescar_tabla() -> None:
         entidad = entidad_dropdown.value or None
-        eventos = log_service.listar_eventos(entidad=entidad, texto=buscador_field.value or "")
+        resultado = log_service.listar_eventos_pagina(
+            pagina=paginador.pagina_actual, tamano_pagina=paginador.tamano_pagina,
+            entidad=entidad, texto=buscador_field.value or None,
+        )
+        paginador.fijar_total(resultado["total"])
         tabla.rows = [
             ft.DataRow(
                 cells=[
@@ -38,7 +45,7 @@ def LogView(page: ft.Page) -> ft.Control:
                     ft.DataCell(ft.Text(e["descripcion"])),
                 ]
             )
-            for e in eventos
+            for e in resultado["items"]
         ]
         page.update()
 
@@ -50,12 +57,22 @@ def LogView(page: ft.Page) -> ft.Control:
 
     refrescar_tabla()
 
-    return ft.Column(
+    encabezado = ft.Column(
         [
             ft.Text("Historial", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([entidad_dropdown, buscador_field]),
-            tabla,
+        ],
+        spacing=10,
+    )
+
+    zona_tabla = ft.Column(
+        [
+            con_scroll_horizontal(tabla),
+            paginador.controles,
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=10,
     )
+
+    return ft.Column([encabezado, zona_tabla], expand=True, spacing=10)

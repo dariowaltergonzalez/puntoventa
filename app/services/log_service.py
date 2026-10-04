@@ -70,3 +70,13 @@ def listar_eventos(entidad: str | None = None, texto: str | None = None, limite:
         texto = texto.strip().lower()
         eventos = [e for e in eventos if texto in e["descripcion"].lower()]
     return eventos
+
+
+def listar_eventos_pagina(
+    pagina: int, tamano_pagina: int, entidad: str | None = None, texto: str | None = None,
+) -> dict:
+    """Version paginada de `listar_eventos`, sin el tope de 500 -- deja llegar a cualquier
+    evento viejo navegando las paginas en vez de perderlo de vista. Devuelve
+    {'items': [...], 'total': N}."""
+    filas, total = log_repo.listar_pagina(pagina, tamano_pagina, entidad=entidad, texto=texto)
+    return {"items": [_a_dict(fila) for fila in filas], "total": total}

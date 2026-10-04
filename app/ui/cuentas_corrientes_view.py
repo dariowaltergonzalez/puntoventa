@@ -11,7 +11,7 @@ from app.services.exceptions import (
 )
 from app.shared.money import formatear_porcentaje, formatear_precio
 from app.ui.campos import FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
-from app.ui.listados import coincide_texto
+from app.ui.listados import coincide_texto, con_scroll_horizontal
 from app.ui.theme import COLOR_DANGER, COLOR_WARNING
 
 EXCEPCIONES_NEGOCIO = (
@@ -72,7 +72,7 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
     seccion_lista = ft.Column([
         ft.Text("Cuentas Corrientes", size=20, weight=ft.FontWeight.BOLD),
         ft.Row([tipo_dropdown, buscador_field]),
-        tabla_lista,
+        con_scroll_horizontal(tabla_lista),
     ])
 
     # ================= SECCION DETALLE =================
@@ -235,10 +235,10 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
             detalle_saldo_texto,
             volver_button,
             ft.Text("Cargos", weight=ft.FontWeight.BOLD),
-            tabla_cargos,
+            con_scroll_horizontal(tabla_cargos),
             ft.Row([cargo_monto_field, cargo_fecha_field, cargo_observacion_field, agregar_cargo_button]),
             ft.Text("Pagos / cobros", weight=ft.FontWeight.BOLD),
-            tabla_pagos,
+            con_scroll_horizontal(tabla_pagos),
             ft.Row([pago_monto_field, pago_fecha_field, pago_observacion_field]),
             pago_puntual_switch,
             contenedor_cargos_puntuales,

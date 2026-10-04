@@ -5,6 +5,7 @@ import flet as ft
 from app.services import movimientos_service, productos_service
 from app.services.exceptions import ProductoInactivoError, ProductoNoEncontradoError, StockInsuficienteError
 from app.shared.money import formatear_cantidad
+from app.ui.listados import Paginador, con_scroll_horizontal
 
 MOTIVOS = ["compra", "venta", "devolucion", "ajuste"]
 
@@ -36,6 +37,8 @@ def MovimientosView(page: ft.Page) -> ft.Control:
         rows=[],
     )
 
+    paginador = Paginador(on_cambio=lambda: refrescar_tabla())
+
     def mostrar_error(mensaje: str) -> None:
         page.show_dialog(ft.SnackBar(ft.Text(mensaje)))
 
@@ -50,6 +53,10 @@ def MovimientosView(page: ft.Page) -> ft.Control:
         ]
 
     def refrescar_tabla() -> None:
+        resultado = movimientos_service.listar_movimientos_pagina(
+            pagina=paginador.pagina_actual, tamano_pagina=paginador.tamano_pagina,
+        )
+        paginador.fijar_total(resultado["total"])
         tabla.rows = [
             ft.DataRow(
                 cells=[
@@ -60,7 +67,7 @@ def MovimientosView(page: ft.Page) -> ft.Control:
                     ft.DataCell(ft.Text(m["motivo"])),
                 ]
             )
-            for m in movimientos_service.listar_movimientos()[:50]
+            for m in resultado["items"]
         ]
         page.update()
 
@@ -101,14 +108,24 @@ def MovimientosView(page: ft.Page) -> ft.Control:
     refrescar_productos()
     refrescar_tabla()
 
-    return ft.Column(
+    encabezado = ft.Column(
         [
             ft.Text("Movimientos", size=20, weight=ft.FontWeight.BOLD),
             ft.Row([producto_dropdown, tipo_dropdown, cantidad_field]),
             ft.Row([motivo_dropdown, referencia_field, observacion_field]),
             ft.ElevatedButton("Registrar movimiento", on_click=guardar),
-            tabla,
+        ],
+        spacing=10,
+    )
+
+    zona_tabla = ft.Column(
+        [
+            con_scroll_horizontal(tabla),
+            paginador.controles,
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=10,
     )
+
+    return ft.Column([encabezado, zona_tabla], expand=True, spacing=10)

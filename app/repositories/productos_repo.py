@@ -1,6 +1,7 @@
 import sqlite3
 
 from app.db.connection import get_connection
+from app.repositories.paginacion import paginar
 
 
 def crear(
@@ -105,6 +106,37 @@ def listar(solo_activos: bool = False, categoria_id: int | None = None) -> list[
         sql += " ORDER BY nombre"
 
         return conn.execute(sql, parametros).fetchall()
+    finally:
+        conn.close()
+
+
+def listar_pagina(
+    pagina: int, tamano_pagina: int, texto: str | None = None,
+    solo_activos: bool = False, categoria_id: int | None = None,
+) -> tuple[list[sqlite3.Row], int]:
+    """Igual que `listar`, pero resuelta en SQL: pide solo la pagina pedida (LIMIT/OFFSET) y
+    el total de registros via COUNT, en vez de traer toda la tabla y recortar en Python --
+    pensada para catalogos grandes donde cargar todo en memoria en cada busqueda no escala."""
+    conn = get_connection()
+    try:
+        condiciones = []
+        parametros = []
+        if solo_activos:
+            condiciones.append("activo = 1")
+        if categoria_id is not None:
+            condiciones.append("categoria_id = ?")
+            parametros.append(categoria_id)
+        if texto:
+            condiciones.append("(codigo LIKE ? OR nombre LIKE ? OR codigo_barra LIKE ?)")
+            comodin = f"%{texto}%"
+            parametros.extend([comodin, comodin, comodin])
+
+        sql = "SELECT * FROM productos"
+        if condiciones:
+            sql += " WHERE " + " AND ".join(condiciones)
+        sql += " ORDER BY nombre"
+
+        return paginar(conn, sql, parametros, pagina, tamano_pagina)
     finally:
         conn.close()
 

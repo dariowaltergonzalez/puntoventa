@@ -2,6 +2,7 @@ import flet as ft
 
 from app.services import categorias_service, lotes_service, movimientos_service
 from app.shared.money import formatear_cantidad, formatear_precio
+from app.ui.listados import con_scroll_horizontal
 from app.ui.theme import COLOR_DANGER
 
 
@@ -62,7 +63,7 @@ def StockView(page: ft.Page) -> ft.Control:
         )
         return ft.ExpansionTile(
             title=titulo,
-            controls=[tabla_lotes],
+            controls=[con_scroll_horizontal(tabla_lotes)],
             tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
             affinity=ft.TileAffinity.LEADING,
         )

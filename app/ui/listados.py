@@ -9,6 +9,15 @@ import flet as ft
 TAMANOS_PAGINA = [10, 20, 50]
 
 
+def con_scroll_horizontal(tabla: ft.Control) -> ft.Row:
+    """Envuelve un DataTable para que se pueda desplazar horizontalmente -- Column (donde vive
+    el resto de la pantalla) solo scrollea vertical, asi que una tabla con muchas columnas
+    queda cortada sin ninguna pista de que hay mas contenido a la derecha si no se envuelve
+    asi. scroll=ALWAYS en vez de AUTO para que la barra se vea siempre, no solo al pasar
+    el mouse -- es la pista de que se puede desplazar."""
+    return ft.Row([tabla], scroll=ft.ScrollMode.ALWAYS)
+
+
 # ================= Filtros genericos (funcionan para cualquier entidad) =================
 
 def coincide_texto(valor: str | None, busqueda: str | None) -> bool:
@@ -100,15 +109,27 @@ class Paginador:
 
     def aplicar(self, items: list) -> list:
         """Recibe la lista COMPLETA ya filtrada, actualiza el texto de estado y los botones
-        habilitados/deshabilitados, y devuelve solo la porcion de la pagina actual."""
+        habilitados/deshabilitados, y devuelve solo la porcion de la pagina actual. Para
+        paginacion del lado del cliente (se trajo todo de la base y se recorta en Python)."""
         self.total_items = len(items)
-        if self.pagina_actual > self.total_paginas():
-            self.pagina_actual = self.total_paginas()
+        self._actualizar_estado()
         inicio = (self.pagina_actual - 1) * self.tamano_pagina
         fin = inicio + self.tamano_pagina
+        return items[inicio:fin]
+
+    def fijar_total(self, total_items: int) -> None:
+        """Para paginacion resuelta en SQL (LIMIT/OFFSET): el propio service ya devolvio
+        solo los items de esta pagina, y el 'total' de registros que matchean el filtro
+        viene calculado aparte (ver productos_service.listar_productos_pagina). Esta funcion
+        solo actualiza el texto de estado y los botones -- no recorta nada."""
+        self.total_items = total_items
+        self._actualizar_estado()
+
+    def _actualizar_estado(self) -> None:
+        if self.pagina_actual > self.total_paginas():
+            self.pagina_actual = self.total_paginas()
         self.texto_estado.value = f"Pagina {self.pagina_actual} de {self.total_paginas()} ({self.total_items} registros)"
         self.primero_button.disabled = self.pagina_actual <= 1
         self.anterior_button.disabled = self.pagina_actual <= 1
         self.siguiente_button.disabled = self.pagina_actual >= self.total_paginas()
         self.ultimo_button.disabled = self.pagina_actual >= self.total_paginas()
-        return items[inicio:fin]

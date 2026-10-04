@@ -118,6 +118,16 @@ def listar_movimientos(
     return [_a_dict(f) for f in movimientos_repo.listar(desde, hasta, tipo)]
 
 
+def listar_movimientos_pagina(
+    pagina: int, tamano_pagina: int,
+    desde: str | None = None, hasta: str | None = None, tipo: str | None = None,
+) -> dict:
+    """Version paginada de `listar_movimientos`, sin cargar todos los movimientos de la
+    historia del negocio en cada refresco. Devuelve {'items': [...], 'total': N}."""
+    filas, total = movimientos_repo.listar_pagina(pagina, tamano_pagina, desde, hasta, tipo)
+    return {"items": [_a_dict(f) for f in filas], "total": total}
+
+
 def consultar_stock(categoria_id: int | None = None, solo_activos: bool = True) -> list[dict]:
     productos = productos_repo.listar(solo_activos=solo_activos, categoria_id=categoria_id)
     return [

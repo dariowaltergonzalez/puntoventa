@@ -15,7 +15,7 @@ from app.services.exceptions import (
     ProveedorNoEncontradoError,
 )
 from app.shared.money import formatear_cantidad, formatear_precio
-from app.ui.listados import Paginador, coincide_exacto, coincide_texto, filtrar
+from app.ui.listados import Paginador, coincide_exacto, coincide_texto, con_scroll_horizontal, filtrar
 from app.ui.theme import COLOR_DANGER_WASH, COLOR_WARNING
 
 TIPO_EXISTENTE = "Producto existente"
@@ -330,7 +330,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         )
         return ft.ExpansionTile(
             title=titulo,
-            controls=[items_tabla],
+            controls=[con_scroll_horizontal(items_tabla)],
             tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
             affinity=ft.TileAffinity.LEADING,
         )
@@ -637,7 +637,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                             f"{r['fecha'][:16]}   |   Remito: {r['numero_remito'] or '-'}"
                             + (f"   |   {r['observacion']}" if r["observacion"] else "")
                         ),
-                        tabla_items_r,
+                        con_scroll_horizontal(tabla_items_r),
                     ]),
                     padding=ft.Padding.symmetric(vertical=8),
                 )
@@ -765,7 +765,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             ft.Row([motivo_cierre_field, confirmar_cierre_button]),
             seccion_recepcion,
             ft.Text("Lineas pedidas", weight=ft.FontWeight.BOLD),
-            tabla_items_oc,
+            con_scroll_horizontal(tabla_items_oc),
             ft.Text("Historial de recepciones", weight=ft.FontWeight.BOLD),
             contenedor_recepciones,
         ],
