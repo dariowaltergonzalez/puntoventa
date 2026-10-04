@@ -11,6 +11,14 @@ from app.ui.ordenes_compra_view import OrdenesCompraView
 from app.ui.productos_view import ProductosView
 from app.ui.proveedores_view import ProveedoresView
 from app.ui.stock_view import StockView
+from app.ui.theme import (
+    COLOR_BG,
+    COLOR_RAIL,
+    COLOR_RAIL_SOFT,
+    COLOR_TEXT_ON_RAIL,
+    COLOR_TEXT_ON_RAIL_SOFT,
+    theme_claro,
+)
 from app.ui.ventas_view import VentasView
 
 # Agrupacion del menu por seccion (ver "Estructura del menu" en el plan de producto).
@@ -37,20 +45,33 @@ GRUPOS_MENU = [
     ]),
 ]
 
-COLOR_SELECCIONADO = ft.Colors.BLUE_100
-
-
 def build_app(page: ft.Page) -> None:
-    content = ft.Container(expand=True, padding=20)
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.theme = theme_claro()
+    page.bgcolor = COLOR_BG
+
+    content = ft.Container(expand=True, padding=20, bgcolor=COLOR_BG)
     items_menu: list[tuple[ft.Container, callable]] = []
+
+    def mostrar_menu(e: ft.ControlEvent | None = None) -> None:
+        menu.visible = True
+        page.update()
+
+    # Ventas es una consola de venta rapida a pantalla completa -- oculta el menu general
+    # para ganar ancho (tiene su propio panel de busqueda/cliente). Como no hay sidebar
+    # visible ahi para volver a abrirlo, VentasView lee este callback de la Page y dibuja
+    # su propio botoncito "volver al menu" junto al titulo de su pantalla.
+    page.mostrar_menu_general = mostrar_menu
 
     def seleccionar(indice: int) -> None:
         for i, (contenedor, _) in enumerate(items_menu):
-            contenedor.bgcolor = COLOR_SELECCIONADO if i == indice else None
+            contenedor.bgcolor = COLOR_RAIL_SOFT if i == indice else None
         # Cada pantalla se reconstruye de cero al navegar -- si la pantalla anterior dejo un
         # page.on_keyboard_event propio (atajos de teclado), hay que sacarlo antes de armar la
         # nueva, si no las teclas quedarian disparando acciones de la pantalla vieja.
         page.on_keyboard_event = None
+        es_ventas = items_menu[indice][1] is VentasView
+        menu.visible = not es_ventas
         content.content = items_menu[indice][1](page)
         page.update()
 
@@ -58,12 +79,21 @@ def build_app(page: ft.Page) -> None:
     indice_actual = 0
     for nombre_grupo, pantallas in GRUPOS_MENU:
         filas_menu.append(
-            ft.Text(nombre_grupo.upper(), size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.OUTLINE)
+            ft.Text(
+                nombre_grupo.upper(), size=11, weight=ft.FontWeight.BOLD,
+                color=COLOR_TEXT_ON_RAIL_SOFT,
+            )
         )
         for nombre_pantalla, icono, factory in pantallas:
             idx = indice_actual
             fila = ft.Container(
-                content=ft.Row([ft.Icon(icono, size=18), ft.Text(nombre_pantalla)], spacing=8),
+                content=ft.Row(
+                    [
+                        ft.Icon(icono, size=18, color=COLOR_TEXT_ON_RAIL),
+                        ft.Text(nombre_pantalla, color=COLOR_TEXT_ON_RAIL),
+                    ],
+                    spacing=8,
+                ),
                 padding=ft.Padding.symmetric(horizontal=12, vertical=8),
                 border_radius=6,
                 on_click=lambda e, i=idx: seleccionar(i),
@@ -71,13 +101,14 @@ def build_app(page: ft.Page) -> None:
             items_menu.append((fila, factory))
             filas_menu.append(fila)
             indice_actual += 1
-        filas_menu.append(ft.Divider(height=1))
+        filas_menu.append(ft.Divider(height=1, color=COLOR_RAIL_SOFT))
 
     menu = ft.Container(
         content=ft.Column(filas_menu, spacing=2, tight=True, scroll=ft.ScrollMode.AUTO),
         width=200,
         padding=10,
+        bgcolor=COLOR_RAIL,
     )
 
     seleccionar(0)
-    page.add(ft.Row([menu, ft.VerticalDivider(width=1), content], expand=True))
+    page.add(ft.Row([menu, content], expand=True, spacing=0))

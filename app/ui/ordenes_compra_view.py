@@ -16,6 +16,7 @@ from app.services.exceptions import (
 )
 from app.shared.money import formatear_cantidad, formatear_precio
 from app.ui.listados import Paginador, coincide_exacto, coincide_texto, filtrar
+from app.ui.theme import COLOR_DANGER_WASH, COLOR_WARNING
 
 TIPO_EXISTENTE = "Producto existente"
 TIPO_NUEVO = "Producto nuevo"
@@ -284,7 +285,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         difiere = costo_real != item["costo_pactado"]
         return ft.Text(
             formatear_precio(costo_real),
-            color=ft.Colors.ORANGE if difiere else None,
+            color=COLOR_WARNING if difiere else None,
             weight=ft.FontWeight.BOLD if difiere else None,
         )
 
@@ -303,7 +304,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             celdas[0] = ft.Container(
                 ft.Row([
                     ft.Text(oc["numero"]),
-                    ft.Icon(ft.Icons.BOLT, size=16, color=ft.Colors.AMBER_700,
+                    ft.Icon(ft.Icons.BOLT, size=16, color=COLOR_WARNING,
                             tooltip="Creada y recibida en el acto (\"ya la tenes en mano\")"),
                 ], spacing=2, tight=True),
                 width=_ANCHOS_COLUMNAS_LISTA[0],
@@ -538,7 +539,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     contenedor_recepciones = ft.Column([])
 
     editar_oc_button = ft.ElevatedButton("Editar")
-    cancelar_oc_button = ft.ElevatedButton("Cancelar orden", bgcolor=ft.Colors.RED_100)
+    cancelar_oc_button = ft.ElevatedButton("Cancelar orden", bgcolor=COLOR_DANGER_WASH)
     registrar_recepcion_button = ft.ElevatedButton("Registrar recepcion")
     dar_por_recibida_button = ft.ElevatedButton("Dar por recibida")
     volver_lista_button = ft.TextButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
@@ -597,7 +598,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                     ft.DataCell(ft.Text(formatear_precio(item["costo_pactado"]))),
                     ft.DataCell(ft.Text(
                         formatear_cantidad(item["cantidad_recibida"]),
-                        color=ft.Colors.ORANGE if recibida_excede else None,
+                        color=COLOR_WARNING if recibida_excede else None,
                         weight=ft.FontWeight.BOLD if recibida_excede else None,
                     )),
                     ft.DataCell(costo_real_texto(item)),
@@ -621,7 +622,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                         ft.DataCell(ft.Text(formatear_precio(item["costo_unitario"]))),
                         ft.DataCell(ft.Text(formatear_precio(item["subtotal"]))),
                         ft.DataCell(
-                            ft.Text("No pedido", color=ft.Colors.ORANGE, weight=ft.FontWeight.BOLD)
+                            ft.Text("No pedido", color=COLOR_WARNING, weight=ft.FontWeight.BOLD)
                             if item["orden_compra_item_id"] is None
                             else ft.Text("")
                         ),

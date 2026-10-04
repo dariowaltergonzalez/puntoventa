@@ -2,6 +2,7 @@ import flet as ft
 
 from app.services import categorias_service, lotes_service, movimientos_service
 from app.shared.money import formatear_cantidad, formatear_precio
+from app.ui.theme import COLOR_DANGER
 
 
 def StockView(page: ft.Page) -> ft.Control:
@@ -18,7 +19,7 @@ def StockView(page: ft.Page) -> ft.Control:
 
     def construir_fila_producto(p: dict) -> ft.ExpansionTile:
         stock_bajo = p["stock_minimo"] > 0 and p["stock_actual"] < p["stock_minimo"]
-        color = ft.Colors.RED if stock_bajo else None
+        color = COLOR_DANGER if stock_bajo else None
         titulo = ft.Row([
             ft.Container(ft.Text(p["codigo"], color=color), width=100),
             ft.Container(ft.Text(p["nombre"], color=color), width=250),

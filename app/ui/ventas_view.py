@@ -17,6 +17,29 @@ from app.services.exceptions import (
 from app.shared.money import formatear_cantidad, formatear_porcentaje, formatear_precio
 from app.ui.campos import FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
 from app.ui.listados import Paginador, coincide_texto, filtrar
+from app.ui.theme import (
+    COLOR_ACCENT,
+    COLOR_ACCENT_STRONG,
+    COLOR_ACCENT_WASH,
+    COLOR_ACTION,
+    COLOR_ACTION_STRONG,
+    COLOR_ACTION_WASH,
+    COLOR_BG,
+    COLOR_BG_ALT,
+    COLOR_BORDER,
+    COLOR_DANGER,
+    COLOR_RAIL,
+    COLOR_RAIL_BORDE,
+    COLOR_RAIL_BORDE_FOCO,
+    COLOR_RAIL_SOFT,
+    COLOR_SUCCESS,
+    COLOR_SUCCESS_WASH,
+    COLOR_TEXT,
+    COLOR_TEXT_ON_RAIL,
+    COLOR_TEXT_ON_RAIL_SOFT,
+    COLOR_TEXT_SOFT,
+    COLOR_WARNING,
+)
 
 EXCEPCIONES_NEGOCIO = (
     ClienteNoEncontradoError, LineasVaciasError, ListaPrecioNoEncontradaError,
@@ -24,36 +47,11 @@ EXCEPCIONES_NEGOCIO = (
     ProductoNoEncontradoError, ProductoSinPrecioError, StockInsuficienteError, ValueError,
 )
 
-# Paleta "Caja Rapida" (ver mockup aprobado por Dario) -- especifica de esta pantalla, no es
-# el theme general de la app, por su naturaleza de consola de venta rapida a pantalla completa.
-COLOR_BG = "#eef5f4"
-COLOR_BG_ALT = "#e3eeec"
-COLOR_RAIL = "#0e3d3b"
-COLOR_RAIL_SOFT = "#154e4b"
-COLOR_BORDER = "#cfe0dd"
-COLOR_TEXT = "#132824"
-COLOR_TEXT_SOFT = "#54706c"
-COLOR_TEXT_ON_RAIL = "#dceeeb"
-COLOR_TEXT_ON_RAIL_SOFT = "#8fb5b0"
-COLOR_ACCENT = "#0f8b83"
-COLOR_ACCENT_STRONG = "#0b6b64"
-COLOR_ACCENT_WASH = "#e2f3f1"
-COLOR_ACTION = "#ff6a3d"
-COLOR_ACTION_STRONG = "#e2521f"
-COLOR_ACTION_WASH = "#ffe6da"
-COLOR_SUCCESS = "#1f8f5f"
-COLOR_SUCCESS_WASH = "#e2f6ec"
-COLOR_WARNING = "#c9821c"
-COLOR_DANGER = "#d5493f"
-
 ANCHO_CANT_COL = 158
 ANCHO_PRECIO = 110
 ANCHO_DESC = 78
 ANCHO_SUBTOTAL = 118
 ANCHO_ACCION = 44
-
-COLOR_RAIL_BORDE = "#2a6b66"
-COLOR_RAIL_BORDE_FOCO = "#6fe3d4"
 
 
 def _estilizar_dropdown_rail(campo: ft.Dropdown) -> None:
@@ -1182,14 +1180,29 @@ def VentasView(page: ft.Page) -> ft.Control:
         size=11, color=COLOR_TEXT_SOFT,
     )
 
+    # El menu general esta oculto en esta pantalla (ver app_shell.py) para ganar ancho --
+    # este botoncito, a la misma altura que el titulo, es la unica forma de volver a abrirlo.
+    mostrar_menu_general = getattr(page, "mostrar_menu_general", None)
+    encabezado_izquierda = [
+        ft.Text("Punto de Venta", size=16, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT_STRONG),
+    ]
+    if mostrar_menu_general is not None:
+        encabezado_izquierda.insert(0, ft.Container(
+            content=ft.IconButton(ft.Icons.MENU, icon_color=ft.Colors.WHITE, icon_size=18,
+                                   tooltip="Mostrar menu", on_click=mostrar_menu_general,
+                                   style=ft.ButtonStyle(padding=0)),
+            bgcolor=COLOR_RAIL, border_radius=8, width=36, height=36, alignment=ft.Alignment.CENTER,
+        ))
+
     seccion_caja = ft.Column(
         [
             ft.Row(
                 [
-                    ft.Text("Punto de Venta", size=16, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT_STRONG),
+                    *encabezado_izquierda,
                     ft.Container(expand=True),
                     ft.TextButton("Ver ventas anteriores", on_click=lambda e: mostrar_historial()),
                 ],
+                spacing=10,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             ayuda_teclado_texto,

@@ -12,6 +12,7 @@ from app.services.exceptions import (
 from app.shared.money import formatear_porcentaje, formatear_precio
 from app.ui.campos import FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
 from app.ui.listados import coincide_texto
+from app.ui.theme import COLOR_DANGER, COLOR_WARNING
 
 EXCEPCIONES_NEGOCIO = (
     CargoNoEncontradoError, ClienteNoEncontradoError, MontoPagoInvalidoError,
@@ -54,7 +55,7 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
                 ft.DataCell(ft.Text(nombre_entidad(tipo, x))),
                 ft.DataCell(ft.Text(
                     formatear_precio(saldo),
-                    color=ft.Colors.RED if saldo > 0 else None,
+                    color=COLOR_DANGER if saldo > 0 else None,
                     weight=ft.FontWeight.BOLD if saldo > 0 else None,
                 )),
                 ft.DataCell(ft.IconButton(
@@ -139,7 +140,7 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
             nombre = entidad["nombre"]
         detalle_titulo.value = f"{nombre} ({'Clientes' if detalle_tipo == 'cliente' else 'Proveedores'})"
         detalle_saldo_texto.value = f"Saldo actual: {formatear_precio(saldo)}"
-        detalle_saldo_texto.color = ft.Colors.RED if saldo > 0 else None
+        detalle_saldo_texto.color = COLOR_DANGER if saldo > 0 else None
 
         cargos = cc_service.listar_cargos(detalle_tipo, detalle_id)
         filas_cargos = []
@@ -155,9 +156,9 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
                 ft.DataCell(ft.Text(formatear_precio(c["monto"]))),
                 ft.DataCell(ft.Text(
                     formatear_precio(c["saldo_pendiente"]),
-                    color=ft.Colors.RED if c["saldo_pendiente"] > 0 else None,
+                    color=COLOR_DANGER if c["saldo_pendiente"] > 0 else None,
                 )),
-                ft.DataCell(ft.Text(interes_texto, color=ft.Colors.ORANGE if interes_texto != "-" else None)),
+                ft.DataCell(ft.Text(interes_texto, color=COLOR_WARNING if interes_texto != "-" else None)),
                 ft.DataCell(ft.Text(c["observacion"] or "-")),
             ]))
         tabla_cargos.rows = filas_cargos
