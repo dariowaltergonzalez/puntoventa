@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 import flet as ft
@@ -835,6 +836,22 @@ def VentasView(page: ft.Page) -> ft.Control:
     vuelto_texto = ft.Text("Vuelto: $ 0,00", size=16, weight=ft.FontWeight.BOLD, color=COLOR_SUCCESS)
     efectivo_box = ft.Row([recibido_field, vuelto_texto], visible=False, spacing=20,
                            vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+    cheque_banco_field = ft.TextField(label="Banco", width=160)
+    cheque_librador_field = ft.TextField(label="Librador", width=180)
+    cheque_numero_field = ft.TextField(label="Numero (opcional)", width=140)
+    cheque_cuit_field = ft.TextField(label="CUIT librador (opcional)", width=160)
+    cheque_fecha_pago_field = ft.TextField(label="Fecha de pago (AAAA-MM-DD)", width=180)
+    cheque_confirmar_button = ft.ElevatedButton("Confirmar cheque")
+    cheque_box = ft.Column(
+        [
+            ft.Row([cheque_banco_field, cheque_librador_field], spacing=12),
+            ft.Row([cheque_numero_field, cheque_cuit_field, cheque_fecha_pago_field], spacing=12),
+            cheque_confirmar_button,
+        ],
+        visible=False, spacing=10,
+    )
+
     pagos_aplicados_column = ft.Column([], spacing=6)
     btn_confirmar_cobro = ft.ElevatedButton(
         "Confirmar cobro  (F12)", bgcolor=COLOR_SUCCESS, color=ft.Colors.WHITE, disabled=True,
@@ -866,6 +883,7 @@ def VentasView(page: ft.Page) -> ft.Control:
                     medios_grid,
                     cobro_atajos_texto,
                     efectivo_box,
+                    cheque_box,
                     pagos_aplicados_column,
                     ft.Row(
                         [ft.OutlinedButton("Volver al carrito", expand=True, on_click=lambda e: cerrar_cobro()),
@@ -884,11 +902,13 @@ def VentasView(page: ft.Page) -> ft.Control:
         return (t["total_calculado"] - pagado).quantize(Decimal("1.00"))
 
     def construir_chip_pago(idx: int, p: dict) -> ft.Control:
+        cheque = p.get("cheque")
+        etiqueta = f"{p['medio_nombre']} ({cheque['banco']})" if cheque else p["medio_nombre"]
         return ft.Container(
             bgcolor=COLOR_SUCCESS_WASH, border_radius=10, padding=ft.Padding.symmetric(horizontal=12, vertical=8),
             content=ft.Row(
                 [
-                    ft.Text(f"{p['medio_nombre']} · {money(p['monto'])}", weight=ft.FontWeight.BOLD,
+                    ft.Text(f"{etiqueta} · {money(p['monto'])}", weight=ft.FontWeight.BOLD,
                              color="#175c3f", expand=True, size=12.5),
                     ft.TextButton("Quitar", on_click=lambda e, i=idx: quitar_pago(i)),
                 ]
@@ -919,6 +939,8 @@ def VentasView(page: ft.Page) -> ft.Control:
         efectivo_box.visible = False
         recibido_field.value = ""
         vuelto_texto.value = "Vuelto: $ 0,00"
+        cheque_box.visible = False
+        limpiar_campos_cheque()
         refrescar_cobro()
         cobro_overlay.visible = True
         page.update()
@@ -927,6 +949,13 @@ def VentasView(page: ft.Page) -> ft.Control:
         cobro_overlay.visible = False
         page.update()
 
+    def limpiar_campos_cheque() -> None:
+        cheque_banco_field.value = ""
+        cheque_librador_field.value = ""
+        cheque_numero_field.value = ""
+        cheque_cuit_field.value = ""
+        cheque_fecha_pago_field.value = datetime.now().strftime("%Y-%m-%d")
+
     async def elegir_medio(medio: dict) -> None:
         t = activo()
         restante = restante_cobro(t)
@@ -934,12 +963,21 @@ def VentasView(page: ft.Page) -> ft.Control:
             return
         if "efectivo" in medio["nombre"].lower():
             efectivo_box.visible = True
+            cheque_box.visible = False
             recibido_field.value = ""
             vuelto_texto.value = "Vuelto: $ 0,00"
             page.update()
             await recibido_field.focus()
             return
+        if "cheque" in medio["nombre"].lower():
+            efectivo_box.visible = False
+            cheque_box.visible = True
+            limpiar_campos_cheque()
+            page.update()
+            await cheque_banco_field.focus()
+            return
         efectivo_box.visible = False
+        cheque_box.visible = False
         recibido_field.value = ""
         vuelto_texto.value = "Vuelto: $ 0,00"
         t["pagos"].append({"medio_pago_id": medio["id"], "medio_nombre": medio["nombre"], "monto": restante})
@@ -1018,6 +1056,56 @@ def VentasView(page: ft.Page) -> ft.Control:
 
     recibido_field.on_change = on_recibido_change
     recibido_field.on_submit = confirmar_efectivo
+
+    async def confirmar_cheque(e: ft.ControlEvent | None = None) -> None:
+        t = activo()
+        restante = restante_cobro(t)
+        if restante <= 0:
+            return
+        banco = (cheque_banco_field.value or "").strip()
+        librador = (cheque_librador_field.value or "").strip()
+        fecha_pago = (cheque_fecha_pago_field.value or "").strip()
+        if not banco or not librador or not fecha_pago:
+            mostrar_mensaje("Banco, librador y fecha de pago son obligatorios para cargar un cheque", aviso=True)
+            return
+        medio_cheque = next((m for m in estado["medios"] if "cheque" in m["nombre"].lower()), None)
+        if medio_cheque is None:
+            mostrar_mensaje("No hay un medio de pago 'Cheque' cargado en Medios de Pago", aviso=True)
+            return
+        t["pagos"].append({
+            "medio_pago_id": medio_cheque["id"], "medio_nombre": medio_cheque["nombre"], "monto": restante,
+            "cheque": {
+                "banco": banco, "librador": librador, "fecha_pago": fecha_pago,
+                "numero": (cheque_numero_field.value or "").strip() or None,
+                "cuit_librador": (cheque_cuit_field.value or "").strip() or None,
+            },
+        })
+        cheque_box.visible = False
+        limpiar_campos_cheque()
+        refrescar_cobro()
+        page.update()
+        if not btn_confirmar_cobro.disabled:
+            await btn_confirmar_cobro.focus()
+
+    async def submit_cheque_banco(e: ft.ControlEvent) -> None:
+        await cheque_librador_field.focus()
+
+    async def submit_cheque_librador(e: ft.ControlEvent) -> None:
+        await cheque_numero_field.focus()
+
+    async def submit_cheque_numero(e: ft.ControlEvent) -> None:
+        await cheque_cuit_field.focus()
+
+    async def submit_cheque_cuit(e: ft.ControlEvent) -> None:
+        await cheque_fecha_pago_field.focus()
+
+    cheque_banco_field.on_submit = submit_cheque_banco
+    cheque_librador_field.on_submit = submit_cheque_librador
+    cheque_numero_field.on_submit = submit_cheque_numero
+    cheque_cuit_field.on_submit = submit_cheque_cuit
+    cheque_fecha_pago_field.on_submit = confirmar_cheque
+    cheque_confirmar_button.on_click = confirmar_cheque
+
     btn_cerrar_cobro.on_click = lambda e: cerrar_cobro()
 
     def quitar_pago(idx: int) -> None:
@@ -1042,7 +1130,10 @@ def VentasView(page: ft.Page) -> ft.Control:
         try:
             items = construir_items_ticket(t)
             pagos = [
-                {"medio_pago_id": p["medio_pago_id"], "monto": p["monto"], "recibido": p.get("recibido")}
+                {
+                    "medio_pago_id": p["medio_pago_id"], "monto": p["monto"], "recibido": p.get("recibido"),
+                    "cheque": p.get("cheque"),
+                }
                 for p in t["pagos"]
             ]
             iva = parsear_decimal_ar_opcional(iva_field.value, "IVA")
