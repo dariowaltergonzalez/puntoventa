@@ -154,11 +154,32 @@ def calcular_totales(
     }
 
 
+def _validar_datos_cheque_pago(datos_cheque: dict) -> dict:
+    banco = (datos_cheque.get("banco") or "").strip()
+    librador = (datos_cheque.get("librador") or "").strip()
+    fecha_pago = datos_cheque.get("fecha_pago")
+    if not banco:
+        raise ValueError("El banco del cheque no puede estar vacio")
+    if not librador:
+        raise ValueError("El librador del cheque no puede estar vacio")
+    if not fecha_pago:
+        raise ValueError("La fecha de pago del cheque es obligatoria")
+    return {
+        "banco": banco,
+        "librador": librador,
+        "cuit_librador": (datos_cheque.get("cuit_librador") or "").strip() or None,
+        "numero": (datos_cheque.get("numero") or "").strip() or None,
+        "fecha_pago": fecha_pago,
+        "observacion": (datos_cheque.get("observacion") or "").strip() or None,
+    }
+
+
 def _validar_pagos(pagos_entrada: list[dict], total_venta: Decimal) -> list[dict]:
-    """pago de entrada: {'medio_pago_id': int, 'monto': Decimal, 'recibido': Decimal|None}.
-    'recibido' es lo que el cliente entrego fisicamente (solo tiene sentido en efectivo, para
-    poder consultar despues con que billete pago y de donde salio el vuelto) -- opcional,
-    None para medios sin vuelto."""
+    """pago de entrada: {'medio_pago_id': int, 'monto': Decimal, 'recibido': Decimal|None,
+    'cheque': dict|None}. 'recibido' es lo que el cliente entrego fisicamente (solo tiene sentido
+    en efectivo, para poder consultar despues con que billete pago y de donde salio el vuelto).
+    'cheque': {'banco', 'librador', 'cuit_librador', 'numero', 'fecha_pago'} -- cuando el medio se
+    paga con un cheque (Fase 6), se guarda como un cheque 'recibido_cliente' en cartera."""
     if not pagos_entrada:
         raise ValueError("La venta debe tener al menos un medio de pago")
     pagos_validados = []
@@ -174,12 +195,15 @@ def _validar_pagos(pagos_entrada: list[dict], total_venta: Decimal) -> list[dict
         recibido = pago.get("recibido")
         if recibido is not None and recibido < monto:
             raise ValueError("Lo recibido no puede ser menor al monto aplicado de ese medio de pago")
+        cheque = pago.get("cheque")
+        datos_cheque_validados = _validar_datos_cheque_pago(cheque) if cheque is not None else None
         suma += monto
         pagos_validados.append({
             "medio_pago_id": medio_pago_id,
             "monto": precio_a_entero(monto),
             "recibido": precio_a_entero(recibido) if recibido is not None else None,
             "es_cuenta_corriente": medio["es_cuenta_corriente"],
+            "cheque": datos_cheque_validados,
         })
     if suma != total_venta:
         raise MontoPagoInvalidoError(
@@ -314,6 +338,7 @@ def _pago_a_dict(fila: sqlite3.Row) -> dict:
         "monto": entero_a_precio(fila["monto"]),
         "recibido": recibido,
         "vuelto": (recibido - entero_a_precio(fila["monto"])) if recibido is not None else None,
+        "cheque_id": fila["cheque_id"],
     }
 
 

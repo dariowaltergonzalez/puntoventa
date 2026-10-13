@@ -92,3 +92,11 @@ class MedioPagoNoEncontradoError(Exception):
 
 class VentaNoEncontradaError(Exception):
     pass
+
+
+class ChequeNoEncontradoError(Exception):
+    pass
+
+
+class ChequeEstadoInvalidoError(Exception):
+    pass

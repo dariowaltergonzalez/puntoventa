@@ -330,9 +330,10 @@ CREATE TABLE IF NOT EXISTS cc_cargos (
     proveedor_id          INTEGER,
     monto                 INTEGER NOT NULL,            -- escalado x100
     fecha                 TEXT NOT NULL,
-    origen                TEXT NOT NULL,               -- 'manual' | 'recepcion' | 'venta'
+    origen                TEXT NOT NULL,               -- 'manual' | 'recepcion' | 'venta' | 'cheque_rechazado'
     origen_recepcion_id   INTEGER,                     -- nullable: solo si origen = 'recepcion'
     origen_venta_id       INTEGER,                     -- nullable: solo si origen = 'venta'
+    origen_cheque_id      INTEGER,                     -- nullable: solo si origen = 'cheque_rechazado'
     observacion           TEXT,
     FOREIGN KEY (cliente_id) REFERENCES clientes (id)
         ON DELETE RESTRICT
@@ -346,11 +347,15 @@ CREATE TABLE IF NOT EXISTS cc_cargos (
     FOREIGN KEY (origen_venta_id) REFERENCES ventas (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
+    FOREIGN KEY (origen_cheque_id) REFERENCES cheques (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
     CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
     CHECK (monto > 0),
-    CHECK (origen IN ('manual', 'recepcion', 'venta')),
+    CHECK (origen IN ('manual', 'recepcion', 'venta', 'cheque_rechazado')),
     CHECK (origen != 'recepcion' OR origen_recepcion_id IS NOT NULL),
-    CHECK (origen != 'venta' OR origen_venta_id IS NOT NULL)
+    CHECK (origen != 'venta' OR origen_venta_id IS NOT NULL),
+    CHECK (origen != 'cheque_rechazado' OR origen_cheque_id IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS cc_pagos (
@@ -360,10 +365,14 @@ CREATE TABLE IF NOT EXISTS cc_pagos (
     monto          INTEGER NOT NULL,           -- escalado x100
     fecha          TEXT NOT NULL,
     observacion    TEXT,
+    cheque_id      INTEGER,                    -- nullable: si el pago se hizo/recibio con un cheque
     FOREIGN KEY (cliente_id) REFERENCES clientes (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
     FOREIGN KEY (proveedor_id) REFERENCES proveedores (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (cheque_id) REFERENCES cheques (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
     CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
@@ -389,6 +398,7 @@ CREATE INDEX IF NOT EXISTS idx_cc_cargos_proveedor_id ON cc_cargos (proveedor_id
 CREATE INDEX IF NOT EXISTS idx_cc_cargos_fecha ON cc_cargos (fecha);
 CREATE INDEX IF NOT EXISTS idx_cc_pagos_cliente_id ON cc_pagos (cliente_id);
 CREATE INDEX IF NOT EXISTS idx_cc_pagos_proveedor_id ON cc_pagos (proveedor_id);
+CREATE INDEX IF NOT EXISTS idx_cc_pagos_cheque_id ON cc_pagos (cheque_id);
 CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_pago_id ON cc_pago_aplicaciones (pago_id);
 CREATE INDEX IF NOT EXISTS idx_cc_pago_aplicaciones_cargo_id ON cc_pago_aplicaciones (cargo_id);
 CREATE INDEX IF NOT EXISTS idx_lotes_recepcion_id ON lotes (recepcion_id);
@@ -471,15 +481,57 @@ CREATE TABLE IF NOT EXISTS venta_pagos (
     medio_pago_id  INTEGER NOT NULL,
     monto          INTEGER NOT NULL,            -- escalado x100
     recibido       INTEGER,                     -- escalado x100; solo efectivo, NULL en el resto
+    cheque_id      INTEGER,                     -- nullable: si se pago con un cheque
     FOREIGN KEY (venta_id) REFERENCES ventas (id)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
     FOREIGN KEY (medio_pago_id) REFERENCES medios_pago (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
+    FOREIGN KEY (cheque_id) REFERENCES cheques (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
     CHECK (monto > 0),
     CHECK (recibido IS NULL OR recibido >= monto)
 );
+
+-- Fase 6: Cheques
+CREATE TABLE IF NOT EXISTS cheques (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero            TEXT,                     -- opcional
+    banco             TEXT NOT NULL,
+    librador          TEXT NOT NULL,             -- quien lo firmo (no siempre es el cliente mismo)
+    cuit_librador     TEXT,                      -- opcional
+    monto             INTEGER NOT NULL,          -- escalado x100
+    fecha_pago        TEXT NOT NULL,             -- vencimiento/cuando se puede cobrar
+    fecha_recepcion   TEXT NOT NULL,
+    origen_tipo       TEXT NOT NULL,             -- 'recibido_cliente' | 'propio'
+    cliente_id        INTEGER,                   -- solo si origen_tipo = 'recibido_cliente'
+    proveedor_id      INTEGER,                   -- seteado cuando estado = 'entregado_proveedor'
+    estado            TEXT NOT NULL DEFAULT 'en_cartera',
+    observacion       TEXT,                      -- tambien se usa como motivo de baja/rechazo
+    cargo_generado_id INTEGER,                   -- si estado = 'rechazado': el cargo que reabrio la deuda
+    FOREIGN KEY (cliente_id) REFERENCES clientes (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (proveedor_id) REFERENCES proveedores (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (cargo_generado_id) REFERENCES cc_cargos (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CHECK (monto > 0),
+    CHECK (origen_tipo IN ('recibido_cliente', 'propio')),
+    CHECK (origen_tipo != 'recibido_cliente' OR cliente_id IS NOT NULL),
+    CHECK (origen_tipo != 'propio' OR cliente_id IS NULL),
+    CHECK (estado IN ('en_cartera', 'entregado_proveedor', 'baja', 'rechazado')),
+    CHECK (estado != 'entregado_proveedor' OR proveedor_id IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cheques_cliente_id ON cheques (cliente_id);
+CREATE INDEX IF NOT EXISTS idx_cheques_proveedor_id ON cheques (proveedor_id);
+CREATE INDEX IF NOT EXISTS idx_cheques_estado ON cheques (estado);
+CREATE INDEX IF NOT EXISTS idx_cheques_fecha_pago ON cheques (fecha_pago);
 
 CREATE INDEX IF NOT EXISTS idx_ventas_cliente_id ON ventas (cliente_id);
 CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas (fecha);
@@ -490,3 +542,4 @@ CREATE INDEX IF NOT EXISTS idx_venta_item_lotes_venta_item_id ON venta_item_lote
 CREATE INDEX IF NOT EXISTS idx_venta_item_lotes_lote_id ON venta_item_lotes (lote_id);
 CREATE INDEX IF NOT EXISTS idx_venta_pagos_venta_id ON venta_pagos (venta_id);
 CREATE INDEX IF NOT EXISTS idx_venta_pagos_medio_pago_id ON venta_pagos (medio_pago_id);
+CREATE INDEX IF NOT EXISTS idx_venta_pagos_cheque_id ON venta_pagos (cheque_id);

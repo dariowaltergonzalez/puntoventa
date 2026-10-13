@@ -44,6 +44,7 @@ def _cargo_a_dict(fila: sqlite3.Row, saldo_pendiente: Decimal) -> dict:
         "origen": fila["origen"],
         "origen_recepcion_id": fila["origen_recepcion_id"],
         "origen_venta_id": fila["origen_venta_id"],
+        "origen_cheque_id": fila["origen_cheque_id"],
         "observacion": fila["observacion"],
     }
 
@@ -56,6 +57,7 @@ def _pago_a_dict(fila: sqlite3.Row) -> dict:
         "monto": entero_a_precio(fila["monto"]),
         "fecha": fila["fecha"],
         "observacion": fila["observacion"],
+        "cheque_id": fila["cheque_id"],
     }
 
 
@@ -118,6 +120,7 @@ def registrar_pago(
     fecha: str,
     aplicaciones: list[dict] | None = None,
     observacion: str | None = None,
+    cheque_id: int | None = None,
 ) -> dict:
     """aplicaciones=None: se aplica FIFO automatico a los cargos abiertos mas viejos primero.
     aplicaciones=[{'cargo_id': int, 'monto': Decimal}, ...]: se aplica exactamente asi (a mano)."""
@@ -162,6 +165,7 @@ def registrar_pago(
     proveedor_id = entidad_id if entidad_tipo == "proveedor" else None
     pago_id = cc_repo.crear_pago_con_aplicaciones(
         cliente_id, proveedor_id, monto_entero, fecha, observacion, aplicaciones_a_crear,
+        cheque_id=cheque_id,
     )
     log_service.registrar(
         entidad_tipo, entidad_id, f"Se registro un pago de {formatear_precio(monto)} en cuenta corriente",

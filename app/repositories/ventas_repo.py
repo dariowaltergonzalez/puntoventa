@@ -1,7 +1,7 @@
 import sqlite3
 
 from app.db.connection import get_connection
-from app.repositories import cc_repo, contadores_repo, movimientos_repo
+from app.repositories import cc_repo, cheques_repo, contadores_repo, movimientos_repo
 from app.repositories.paginacion import paginar
 
 
@@ -100,9 +100,25 @@ def crear_venta_confirmada(
 
         cargos_generados: list[int] = []
         for pago in pagos:
+            cheque_id = None
+            datos_cheque = pago.get("cheque")
+            if datos_cheque is not None:
+                cheque_id = cheques_repo.crear(
+                    banco=datos_cheque["banco"],
+                    librador=datos_cheque["librador"],
+                    cuit_librador=datos_cheque.get("cuit_librador"),
+                    monto=pago["monto"],
+                    fecha_pago=datos_cheque["fecha_pago"],
+                    fecha_recepcion=fecha,
+                    origen_tipo="recibido_cliente",
+                    cliente_id=cliente_id,
+                    numero=datos_cheque.get("numero"),
+                    observacion=datos_cheque.get("observacion"),
+                    conn=conn,
+                )
             conn.execute(
-                "INSERT INTO venta_pagos (venta_id, medio_pago_id, monto, recibido) VALUES (?, ?, ?, ?)",
-                (venta_id, pago["medio_pago_id"], pago["monto"], pago.get("recibido")),
+                "INSERT INTO venta_pagos (venta_id, medio_pago_id, monto, recibido, cheque_id) VALUES (?, ?, ?, ?, ?)",
+                (venta_id, pago["medio_pago_id"], pago["monto"], pago.get("recibido"), cheque_id),
             )
             if pago.get("es_cuenta_corriente"):
                 cargo_id = cc_repo.crear_cargo(

@@ -12,11 +12,12 @@ def crear_cargo(
     origen_recepcion_id: int | None,
     observacion: str | None,
     origen_venta_id: int | None = None,
+    origen_cheque_id: int | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> int:
     """Exactamente uno de cliente_id/proveedor_id. conn opcional: se usa con una conn ya abierta
     cuando el cargo se genera automaticamente dentro de otra transaccion (ej. recepcion a credito,
-    venta con medio de pago 'cuenta corriente')."""
+    venta con medio de pago 'cuenta corriente', cheque rechazado)."""
     conexion_propia = conn is None
     if conexion_propia:
         conn = get_connection()
@@ -24,10 +25,12 @@ def crear_cargo(
         cursor = conn.execute(
             """
             INSERT INTO cc_cargos
-                (cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id, origen_venta_id, observacion)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id, origen_venta_id,
+                 origen_cheque_id, observacion)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id, origen_venta_id, observacion),
+            (cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id, origen_venta_id,
+             origen_cheque_id, observacion),
         )
         if conexion_propia:
             conn.commit()
@@ -70,19 +73,22 @@ def crear_pago_con_aplicaciones(
     fecha: str,
     observacion: str | None,
     aplicaciones: list[dict],
+    cheque_id: int | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> int:
     """Crea el pago y sus aplicaciones a cargos en una unica transaccion atomica.
     aplicaciones: [{'cargo_id': int, 'monto': int}, ...] -- ya validadas por el servicio
-    (saldo suficiente, suma <= monto del pago)."""
+    (saldo suficiente, suma <= monto del pago). cheque_id: si el pago se hizo/recibio con un
+    cheque (Fase 6), para poder rastrear despues con que cheque se salda cada cargo."""
     conexion_propia = conn is None
     if conexion_propia:
         conn = get_connection()
         conn.execute("BEGIN IMMEDIATE")
     try:
         cursor = conn.execute(
-            "INSERT INTO cc_pagos (cliente_id, proveedor_id, monto, fecha, observacion) VALUES (?, ?, ?, ?, ?)",
-            (cliente_id, proveedor_id, monto, fecha, observacion),
+            "INSERT INTO cc_pagos (cliente_id, proveedor_id, monto, fecha, observacion, cheque_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (cliente_id, proveedor_id, monto, fecha, observacion, cheque_id),
         )
         pago_id = cursor.lastrowid
         for aplicacion in aplicaciones:

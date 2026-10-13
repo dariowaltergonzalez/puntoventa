@@ -818,3 +818,102 @@ def _migrar(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE venta_pagos ADD COLUMN recibido INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_pagos_venta_id ON venta_pagos (venta_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_pagos_medio_pago_id ON venta_pagos (medio_pago_id)")
+
+    # Fase 6: Cheques
+    # cc_cargos necesita una forma nueva de origen ('cheque_rechazado') y una columna nueva
+    # (origen_cheque_id) -- un CHECK no se puede ampliar con ALTER TABLE en SQLite, asi que si la
+    # base ya tiene cc_cargos sin esta columna, se reconstruye con el mismo patron ya usado para
+    # 'lotes' (legacy_alter_table=ON antes del RENAME, para que no se rompan las FK de
+    # cc_pago_aplicaciones, que apunta a esta tabla).
+    columnas_cc_cargos_actual = {fila["name"] for fila in conn.execute("PRAGMA table_info(cc_cargos)")}
+    if "origen_cheque_id" not in columnas_cc_cargos_actual:
+        conn.execute("PRAGMA legacy_alter_table = ON")
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE cc_cargos RENAME TO cc_cargos_old_sin_cheques")
+        conn.execute(
+            """
+            CREATE TABLE cc_cargos (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id            INTEGER,
+                proveedor_id          INTEGER,
+                monto                 INTEGER NOT NULL,
+                fecha                 TEXT NOT NULL,
+                origen                TEXT NOT NULL,
+                origen_recepcion_id   INTEGER,
+                origen_venta_id       INTEGER,
+                origen_cheque_id      INTEGER,
+                observacion           TEXT,
+                FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                FOREIGN KEY (proveedor_id) REFERENCES proveedores (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                FOREIGN KEY (origen_recepcion_id) REFERENCES recepciones (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                FOREIGN KEY (origen_venta_id) REFERENCES ventas (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                FOREIGN KEY (origen_cheque_id) REFERENCES cheques (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
+                CHECK (monto > 0),
+                CHECK (origen IN ('manual', 'recepcion', 'venta', 'cheque_rechazado')),
+                CHECK (origen != 'recepcion' OR origen_recepcion_id IS NOT NULL),
+                CHECK (origen != 'venta' OR origen_venta_id IS NOT NULL),
+                CHECK (origen != 'cheque_rechazado' OR origen_cheque_id IS NOT NULL)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO cc_cargos
+                (id, cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id,
+                 origen_venta_id, origen_cheque_id, observacion)
+            SELECT id, cliente_id, proveedor_id, monto, fecha, origen, origen_recepcion_id,
+                   origen_venta_id, NULL, observacion
+            FROM cc_cargos_old_sin_cheques
+            """
+        )
+        conn.execute("DROP TABLE cc_cargos_old_sin_cheques")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_cargos_cliente_id ON cc_cargos (cliente_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_cargos_proveedor_id ON cc_cargos (proveedor_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_cargos_fecha ON cc_cargos (fecha)")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA legacy_alter_table = OFF")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cheques (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero            TEXT,
+            banco             TEXT NOT NULL,
+            librador          TEXT NOT NULL,
+            cuit_librador     TEXT,
+            monto             INTEGER NOT NULL,
+            fecha_pago        TEXT NOT NULL,
+            fecha_recepcion   TEXT NOT NULL,
+            origen_tipo       TEXT NOT NULL,
+            cliente_id        INTEGER,
+            proveedor_id      INTEGER,
+            estado            TEXT NOT NULL DEFAULT 'en_cartera',
+            observacion       TEXT,
+            cargo_generado_id INTEGER,
+            FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            FOREIGN KEY (proveedor_id) REFERENCES proveedores (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            FOREIGN KEY (cargo_generado_id) REFERENCES cc_cargos (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+            CHECK (monto > 0),
+            CHECK (origen_tipo IN ('recibido_cliente', 'propio')),
+            CHECK (origen_tipo != 'recibido_cliente' OR cliente_id IS NOT NULL),
+            CHECK (origen_tipo != 'propio' OR cliente_id IS NULL),
+            CHECK (estado IN ('en_cartera', 'entregado_proveedor', 'baja', 'rechazado')),
+            CHECK (estado != 'entregado_proveedor' OR proveedor_id IS NOT NULL)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cheques_cliente_id ON cheques (cliente_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cheques_proveedor_id ON cheques (proveedor_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cheques_estado ON cheques (estado)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cheques_fecha_pago ON cheques (fecha_pago)")
+
+    columnas_venta_pagos_cheque = {fila["name"] for fila in conn.execute("PRAGMA table_info(venta_pagos)")}
+    if "cheque_id" not in columnas_venta_pagos_cheque:
+        conn.execute("ALTER TABLE venta_pagos ADD COLUMN cheque_id INTEGER REFERENCES cheques (id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_venta_pagos_cheque_id ON venta_pagos (cheque_id)")
+
+    columnas_cc_pagos = {fila["name"] for fila in conn.execute("PRAGMA table_info(cc_pagos)")}
+    if "cheque_id" not in columnas_cc_pagos:
+        conn.execute("ALTER TABLE cc_pagos ADD COLUMN cheque_id INTEGER REFERENCES cheques (id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_pagos_cheque_id ON cc_pagos (cheque_id)")

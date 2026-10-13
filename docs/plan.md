@@ -319,13 +319,35 @@ Sale directamente de filtrar los cheques en estado **"En cartera"**, agrupados u
 ordenados por **fecha de pago** — para saber de un vistazo cuánto hay para cobrar este mes
 o el que viene.
 
-## Pendiente de definir (diseño técnico, próximo paso)
+## Diseño técnico y estado de implementación (2026-10-13)
 
-- Tablas nuevas y cómo se enganchan con `venta_pagos`, `cc_cargos`/`cc_pagos` y las
-  recepciones de OC.
-- Pantalla(s): ¿una grilla de Cheques aparte (con el patrón estándar de listado del
-  proyecto), más los puntos de entrada/salida integrados en Ventas, Cuentas Corrientes y
-  Compras?
+**Motor (repositorios + servicios) completo y verificado** contra una copia de la base real
+(`scripts/verificar_fase6_cheques.py`, 30 verificaciones, todas OK) — reutiliza casi todo lo
+que ya existía en vez de armar un circuito paralelo:
+
+- **Tabla nueva `cheques`**: datos propios (banco, librador, CUIT, monto, número, fecha de
+  pago, fecha de recepción) + `origen_tipo` ('recibido_cliente' | 'propio') + `estado`
+  ('en_cartera' | 'entregado_proveedor' | 'baja' | 'rechazado') + `cliente_id`/`proveedor_id`
+  + `cargo_generado_id` (el cargo de CC que reabrió la deuda, si rebotó).
+- **`venta_pagos.cheque_id`** (nullable): entrada de un cheque pagando una venta directamente.
+- **`cc_pagos.cheque_id`** (nullable): entrada suelta (saldar CC vieja de un cliente) **y**
+  las dos formas de salida (circular un cheque recibido a un proveedor, o un cheque propio) —
+  las tres son, ni más ni menos, un pago de Cuenta Corriente de siempre, con el cheque como
+  dato extra.
+- **`cc_cargos`**: nuevo origen `'cheque_rechazado'` + columna `origen_cheque_id`, para el
+  cargo que se genera automáticamente al rechazar un cheque.
+- **Pagar una compra nueva con un cheque** (recibido o propio) se resuelve como "la recepción
+  queda a crédito" + "se aplica el cheque a ese cargo recién creado", sin tocar nada de
+  Compras — dos pasos que ya existían por separado, encadenados.
+- `app/repositories/cheques_repo.py` + `app/services/cheques_service.py`: CRUD, las 3
+  funciones de entrada/salida (`recibir_de_cliente_para_cc`, `entregar_a_proveedor`,
+  `crear_cheque_propio_y_entregar`), `dar_de_baja`, `marcar_rechazado` (genera el cargo nuevo
+  de forma atómica), y una compensación manual (si falla aplicar el pago, se borra el cheque
+  recién creado — no quedan huérfanos).
+
+**Pendiente**: la pantalla. A definir — ¿una grilla de Cheques aparte (patrón estándar de
+listado), con los puntos de entrada/salida integrados en Ventas (al cobrar), Cuentas
+Corrientes (entrada suelta / salida a proveedor) y Compras (cheque propio)?
 
 ---
 
