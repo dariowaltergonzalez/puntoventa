@@ -1,6 +1,7 @@
 import flet as ft
 
 from app.ui.categorias_view import CategoriasView
+from app.ui.cheques_view import ChequesView
 from app.ui.clientes_view import ClientesView
 from app.ui.cuentas_corrientes_view import CuentasCorrientesView
 from app.ui.listas_precios_view import ListasPreciosView
@@ -38,6 +39,7 @@ GRUPOS_MENU = [
     ("Cuentas", [
         ("Cuentas Corrientes", ft.Icons.ACCOUNT_BALANCE_WALLET, CuentasCorrientesView),
         ("Medios de Pago", ft.Icons.PAYMENTS, MediosPagoView),
+        ("Cheques", ft.Icons.RECEIPT_LONG, ChequesView),
     ]),
     ("Consultas", [
         ("Stock", ft.Icons.BAR_CHART, StockView),
