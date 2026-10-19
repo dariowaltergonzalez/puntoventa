@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS lotes (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     producto_id        INTEGER NOT NULL,
     recepcion_id       INTEGER,              -- nullable: NULL si origen = 'inicial'
-    origen             TEXT NOT NULL DEFAULT 'recepcion',  -- 'recepcion' | 'inicial' (stock de arranque sin recepcion real)
+    origen             TEXT NOT NULL DEFAULT 'recepcion',  -- 'recepcion' | 'inicial' (stock de arranque) | 'ajuste' (sobrante de inventario)
     cantidad_recibida  INTEGER NOT NULL,   -- escalado x1000, snapshot original
     cantidad_restante  INTEGER NOT NULL,   -- escalado x1000, la consume Fase 4 (FIFO)
     costo_unitario     INTEGER NOT NULL,   -- escalado x100, costo REAL de esta recepcion
@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS lotes (
     CHECK (cantidad_recibida > 0),
     CHECK (cantidad_restante >= 0),
     CHECK (costo_unitario >= 0),
-    CHECK (origen IN ('recepcion', 'inicial')),
+    CHECK (origen IN ('recepcion', 'inicial', 'ajuste')),
     CHECK (origen != 'recepcion' OR recepcion_id IS NOT NULL)
 );
 

@@ -1100,3 +1100,45 @@ def _migrar(conn: sqlite3.Connection) -> None:
     if "nota_credito_id" not in columnas_cc_pagos:
         # El credito que una nota de credito deja en la cuenta corriente del cliente.
         conn.execute("ALTER TABLE cc_pagos ADD COLUMN nota_credito_id INTEGER REFERENCES notas_credito (id)")
+
+    # Ajustes de stock con lotes: un ingreso manual (stock inicial, sobrante de inventario) crea
+    # su propio lote con origen 'ajuste' -- antes los ajustes no tocaban los lotes y stock y lotes
+    # podian quedar descuadrados. El CHECK de 'origen' no se puede ampliar con ALTER: se
+    # reconstruye la tabla (legacy_alter_table=ON para no romper las FK que apuntan a lotes).
+    sql_lotes = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'lotes'").fetchone()[0]
+    if "'ajuste'" not in sql_lotes:
+        conn.execute("PRAGMA legacy_alter_table = ON")
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE lotes RENAME TO lotes_old_ajuste")
+        conn.execute(
+            """
+            CREATE TABLE lotes (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id        INTEGER NOT NULL,
+                recepcion_id       INTEGER,
+                origen             TEXT NOT NULL DEFAULT 'recepcion',
+                cantidad_recibida  INTEGER NOT NULL,
+                cantidad_restante  INTEGER NOT NULL,
+                costo_unitario     INTEGER NOT NULL,
+                fecha              TEXT NOT NULL,
+                FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                FOREIGN KEY (recepcion_id) REFERENCES recepciones (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                CHECK (cantidad_recibida > 0), CHECK (cantidad_restante >= 0), CHECK (costo_unitario >= 0),
+                CHECK (origen IN ('recepcion', 'inicial', 'ajuste')),
+                CHECK (origen != 'recepcion' OR recepcion_id IS NOT NULL)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO lotes (id, producto_id, recepcion_id, origen, cantidad_recibida, cantidad_restante, costo_unitario, fecha)
+            SELECT id, producto_id, recepcion_id, origen, cantidad_recibida, cantidad_restante, costo_unitario, fecha
+            FROM lotes_old_ajuste
+            """
+        )
+        conn.execute("DROP TABLE lotes_old_ajuste")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_producto_id ON lotes (producto_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_producto_fecha ON lotes (producto_id, fecha)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_recepcion_id ON lotes (recepcion_id)")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA legacy_alter_table = OFF")

@@ -42,7 +42,7 @@ def verificar(nombre, condicion):
 
 cliente = clientes_service.listar_clientes()[0]
 proveedor = proveedores_service.listar_proveedores()[0]
-arroz = next(p for p in productos_service.listar_productos() if p["codigo"] == "ARR001")
+arroz = next(p for p in productos_service.listar_productos() if p["codigo"] == "LAV001")
 efectivo = next(m for m in medios_pago_service.listar_medios_pago() if m["nombre"] == "Efectivo")
 
 print(f"Cliente de prueba: {cliente['razon_social']} (id={cliente['id']})")

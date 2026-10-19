@@ -42,15 +42,15 @@ def main() -> None:
     print(f"   OK: producto {arroz}")
 
     print("3. Registrando movimientos...")
-    movimientos_service.registrar_ingreso(fideos["id"], Decimal("18.500"), motivo="compra")
-    movimientos_service.registrar_ingreso(arroz["id"], Decimal("50.000"), motivo="compra")
-    movimientos_service.registrar_egreso(fideos["id"], Decimal("5.250"), motivo="venta")
+    movimientos_service.registrar_ingreso(fideos["id"], Decimal("18.500"), motivo="stock_inicial")
+    movimientos_service.registrar_ingreso(arroz["id"], Decimal("50.000"), motivo="stock_inicial")
+    movimientos_service.registrar_egreso(fideos["id"], Decimal("5.250"), motivo="consumo_interno")
     movimientos_service.registrar_ajuste(arroz["id"], Decimal("1.000"), tipo="egreso", observacion="rotura de bolsa")
     print("   OK: movimientos registrados")
 
     print("4. Probando rechazo de egreso mayor al stock disponible...")
     try:
-        movimientos_service.registrar_egreso(fideos["id"], Decimal("999.000"), motivo="venta")
+        movimientos_service.registrar_egreso(fideos["id"], Decimal("999.000"), motivo="rotura")
         print("   FALLO: se esperaba StockInsuficienteError y no se lanzo")
     except StockInsuficienteError:
         print("   OK: rechazado como se esperaba")

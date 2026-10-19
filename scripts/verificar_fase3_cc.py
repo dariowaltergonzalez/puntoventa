@@ -27,7 +27,11 @@ from app.services import (
 from app.services.exceptions import MontoPagoInvalidoError
 
 # ================= Lado clientes: cargo manual, FIFO, mora, limite =================
-cliente = clientes_service.listar_clientes()[0]
+# Cliente propio de la prueba, con plazo/mora/limite configurados (no depende de los datos cargados).
+cliente = clientes_service.crear_cliente(
+    f"Cliente verif CC {datetime.now():%H%M%S%f}", plazo_pago_dias=30, tasa_interes_mora_diaria=Decimal("0.5"),
+    limite_credito=Decimal("12000"), avisar_limite_credito=True, bloquear_limite_credito=True,
+)
 print(f"Cliente: {cliente['razon_social']}  plazo={cliente['plazo_pago_dias']}d  "
       f"mora={cliente['tasa_interes_mora_diaria']}%/dia  limite={cliente['limite_credito']}")
 

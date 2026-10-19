@@ -80,6 +80,9 @@ Patrones de este proyecto (no son limitaciones de Flet, son decisiones de estilo
 
 - No hay suite de tests automatizada todavía — se verifica con scripts sueltos en `scripts/` (`seed_and_verify.py`, `verificar_*.py`) que se corren manualmente contra una copia de la base.
 - Antes de dar por terminada una feature que toca movimientos o stock, correr `movimientos_service.recalcular_stock()` y confirmar que no aparecen diferencias.
+- **`scripts/verificar_cuadre.py`** (solo lee, se puede correr contra la base real): reglas que siempre tienen que cumplirse — stock = lotes = movimientos, ningún movimiento sin lote, cada venta cobrada por su total, nada acreditado de más, cuentas corrientes sin sobre-aplicaciones. Toda feature nueva que toque stock o plata tiene que dejarlo en "Todo cuadra".
+- **Todo lo que entra o sale del stock pasa por un lote** (con su costo): recepción, venta, nota de crédito, y también los ajustes manuales (`movimientos_service.registrar_ingreso/egreso` con motivos cerrados). Nunca un movimiento de stock sin `lote_id`: sin lote no hay costo y la ganancia queda mal.
+- `scripts/resetear_base.py --confirmar`: borrón y cuenta nueva (copia de seguridad en `data/backups/`, base nueva desde `schema.sql` + `seed_datos_basicos.py`). Solo mientras no haya datos reales.
 
 ## Idioma y convenciones de nombres
 

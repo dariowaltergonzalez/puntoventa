@@ -1,34 +1,8 @@
 import sqlite3
 
 from app.db.connection import get_connection
-from app.repositories import cc_repo, cheques_repo, contadores_repo, movimientos_repo
+from app.repositories import cc_repo, cheques_repo, contadores_repo, lotes_repo, movimientos_repo
 from app.repositories.paginacion import paginar
-
-
-def _consumir_fifo(conn: sqlite3.Connection, producto_id: int, cantidad_necesaria: int) -> list[dict]:
-    """Consume lotes en orden FIFO (fecha ASC, id ASC) hasta cubrir cantidad_necesaria (escalado
-    x1000), descontando cantidad_restante en cada uno. Devuelve el detalle de que lote(s) se
-    tocaron y a que costo. Asume que la capa de servicio ya valido que hay stock suficiente --
-    si de todas formas no alcanza (bug o carrera), rompe fuerte en vez de vender fantasma."""
-    lotes = conn.execute(
-        "SELECT id, cantidad_restante, costo_unitario FROM lotes "
-        "WHERE producto_id = ? AND cantidad_restante > 0 ORDER BY fecha ASC, id ASC",
-        (producto_id,),
-    ).fetchall()
-    consumos = []
-    restante = cantidad_necesaria
-    for lote in lotes:
-        if restante <= 0:
-            break
-        tomar = min(restante, lote["cantidad_restante"])
-        conn.execute(
-            "UPDATE lotes SET cantidad_restante = cantidad_restante - ? WHERE id = ?", (tomar, lote["id"]),
-        )
-        consumos.append({"lote_id": lote["id"], "cantidad": tomar, "costo_unitario": lote["costo_unitario"]})
-        restante -= tomar
-    if restante > 0:
-        raise RuntimeError(f"Stock insuficiente en lotes para producto {producto_id}: faltan {restante}")
-    return consumos
 
 
 def crear_venta_confirmada(
@@ -80,7 +54,7 @@ def crear_venta_confirmada(
 
             producto_id = item.get("producto_id")
             if producto_id is not None:
-                consumos = _consumir_fifo(conn, producto_id, item["cantidad"])
+                consumos = lotes_repo.consumir_fifo(conn, producto_id, item["cantidad"])
                 for consumo in consumos:
                     conn.execute(
                         "INSERT INTO venta_item_lotes (venta_item_id, lote_id, cantidad, costo_unitario) "

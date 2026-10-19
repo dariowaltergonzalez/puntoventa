@@ -1253,6 +1253,7 @@ def VentasView(page: ft.Page) -> ft.Control:
     )
     detalle_total_texto = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
     detalle_neto_texto = ft.Text("", size=15, color=COLOR_WARNING)
+    detalle_ganancia_texto = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     titulo_notas_credito = ft.Text("Notas de credito", weight=ft.FontWeight.BOLD)
     tabla_notas_credito = ft.DataTable(
         columns=[ft.DataColumn(ft.Text(t)) for t in ["Numero", "Fecha", "Motivo", "Total"]], rows=[],
@@ -1517,6 +1518,12 @@ def VentasView(page: ft.Page) -> ft.Control:
         detalle_neto_texto.value = (
             f"Acreditado: {formatear_precio(venta['total_acreditado'])}   ·   Neto: {formatear_precio(venta['total_neto'])}"
         )
+        ganancia = ventas_service.detalle_ganancia_venta(venta)
+        detalle_ganancia_texto.value = (
+            f"Ganancia: {formatear_precio(ganancia['ganancia'])}   "
+            f"(cobrado sin IVA {formatear_precio(ganancia['ingresos'])} - costo {formatear_precio(ganancia['costo'])})"
+        )
+        detalle_ganancia_texto.color = COLOR_SUCCESS if ganancia["ganancia"] >= 0 else COLOR_DANGER
         titulo_notas_credito.visible = hay_notas
         tabla_notas_credito.visible = hay_notas
         tabla_notas_credito.rows = [
@@ -1542,7 +1549,7 @@ def VentasView(page: ft.Page) -> ft.Control:
             panel_nota_credito,
             ft.Text("Items", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_items),
             ft.Text("Pagos", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_pagos),
-            detalle_total_texto, detalle_neto_texto,
+            detalle_total_texto, detalle_neto_texto, detalle_ganancia_texto,
             titulo_notas_credito, con_scroll_horizontal(tabla_notas_credito),
         ],
         visible=False, expand=True, scroll=ft.ScrollMode.AUTO, spacing=8,

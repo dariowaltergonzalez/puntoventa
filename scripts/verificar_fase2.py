@@ -22,11 +22,11 @@ cliente = clientes_service.crear_cliente(
     plazo_pago_dias=30,
     porcentaje_descuento=Decimal("5"),
     limite_credito=Decimal("50000"),
-    modo_limite_credito="avisar",
+    avisar_limite_credito=True,
     tasa_interes_mora_diaria=Decimal("0.5"),
 )
 print(f"Cliente creado: {cliente['razon_social']} (id={cliente['id']})")
-print(f"  descuento={cliente['porcentaje_descuento']}%  limite={cliente['limite_credito']}  modo={cliente['modo_limite_credito']}  mora={cliente['tasa_interes_mora_diaria']}%/dia")
+print(f"  descuento={cliente['porcentaje_descuento']}%  limite={cliente['limite_credito']}  avisar={cliente["avisar_limite_credito"]}  mora={cliente['tasa_interes_mora_diaria']}%/dia")
 
 try:
     clientes_service.crear_cliente(razon_social="Almacen Don Jose SRL")
@@ -51,8 +51,8 @@ except ListaPrecioDuplicadaError:
 
 productos = productos_service.listar_productos()
 categorias = categorias_service.listar_categorias()
-producto_arroz = next(p for p in productos if p["codigo"] == "ARR001")
-categoria_almacen = next(c for c in categorias if c["nombre"] == "Almacen")
+producto_arroz = next(p for p in productos if p["codigo"] == "LAV001")
+categoria_almacen = next(c for c in categorias if c["id"] == producto_arroz["categoria_id"])
 print(f"\nProducto de prueba: {producto_arroz['codigo']} - {producto_arroz['nombre']}  precio_venta normal={producto_arroz['precio_venta']}")
 
 # Nivel 3: solo % general

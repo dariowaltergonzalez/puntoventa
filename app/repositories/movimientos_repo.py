@@ -2,6 +2,7 @@ import sqlite3
 from datetime import datetime
 
 from app.db.connection import get_connection
+from app.repositories import lotes_repo
 from app.repositories.paginacion import paginar
 
 
@@ -61,6 +62,45 @@ def registrar_movimiento_y_actualizar_stock(
     finally:
         if conexion_propia:
             conn.close()
+
+
+def registrar_ajuste_con_lotes(
+    producto_id: int,
+    tipo: str,
+    cantidad: int,
+    motivo: str,
+    observacion: str | None,
+    referencia: str | None = None,
+    costo_unitario: int | None = None,
+    origen_lote: str = "ajuste",
+) -> list[int]:
+    """Ingreso o egreso manual (stock inicial, sobrante, rotura, vencimiento...) que mantiene los
+    lotes al dia, en una unica transaccion. Egreso: consume FIFO como una venta (un movimiento por
+    lote, con su costo -- asi la perdida queda valorizada al costo real). Ingreso: crea un lote
+    propio con costo_unitario. Ya validado por el servicio."""
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        movimientos = []
+        if tipo == "egreso":
+            for consumo in lotes_repo.consumir_fifo(conn, producto_id, cantidad):
+                movimientos.append(registrar_movimiento_y_actualizar_stock(
+                    producto_id, "egreso", consumo["cantidad"], motivo, referencia, observacion,
+                    lote_id=consumo["lote_id"], precio_unitario=consumo["costo_unitario"], conn=conn,
+                ))
+        else:
+            lote_id = lotes_repo.crear_lote(conn, producto_id, origen_lote, cantidad, costo_unitario, datetime.now().isoformat())
+            movimientos.append(registrar_movimiento_y_actualizar_stock(
+                producto_id, "ingreso", cantidad, motivo, referencia, observacion,
+                lote_id=lote_id, precio_unitario=costo_unitario, conn=conn,
+            ))
+        conn.commit()
+        return movimientos
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def obtener_por_id(movimiento_id: int) -> sqlite3.Row | None:

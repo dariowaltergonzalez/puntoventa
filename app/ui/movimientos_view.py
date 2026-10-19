@@ -3,26 +3,43 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from app.services import movimientos_service, productos_service
+from app.services.movimientos_service import MOTIVOS_EGRESO, MOTIVOS_INGRESO
 from app.services.exceptions import ProductoInactivoError, ProductoNoEncontradoError, StockInsuficienteError
 from app.shared.money import formatear_cantidad
+from app.ui.campos import FILTRO_DECIMALES, parsear_decimal_ar_opcional
 from app.ui.listados import Paginador, con_scroll_horizontal
-
-MOTIVOS = ["compra", "venta", "devolucion", "ajuste"]
-
+from app.ui.theme import COLOR_TEXT_SOFT
 
 def MovimientosView(page: ft.Page) -> ft.Control:
     producto_dropdown = ft.Dropdown(label="Producto", options=[])
     tipo_dropdown = ft.Dropdown(
         label="Tipo",
         options=[ft.dropdown.Option("ingreso"), ft.dropdown.Option("egreso")],
-        value="ingreso",
+        value="egreso",
     )
     cantidad_field = ft.TextField(label="Cantidad", hint_text="18,500")
-    motivo_dropdown = ft.Dropdown(
-        label="Motivo",
-        options=[ft.dropdown.Option(m) for m in MOTIVOS],
-        value="compra",
+    motivo_dropdown = ft.Dropdown(label="Motivo", width=280, options=[])
+    costo_field = ft.TextField(
+        label="Costo unitario (opcional)", width=220, input_filter=FILTRO_DECIMALES,
+        helper="Vacio = el del ultimo lote del producto",
     )
+    aviso_texto = ft.Text(
+        "Aca solo se cargan ajustes (roturas, vencimientos, inventario). Las compras van por Compras, "
+        "las ventas por la caja y las devoluciones con una nota de credito.",
+        size=12, color=COLOR_TEXT_SOFT,
+    )
+
+    def actualizar_motivos(e: ft.ControlEvent | None = None) -> None:
+        motivos = MOTIVOS_INGRESO if tipo_dropdown.value == "ingreso" else MOTIVOS_EGRESO
+        motivo_dropdown.options = [ft.dropdown.Option(key=k, text=v) for k, v in motivos.items()]
+        if motivo_dropdown.value not in motivos:
+            motivo_dropdown.value = next(iter(motivos))
+        costo_field.visible = tipo_dropdown.value == "ingreso"
+        if e is not None:
+            page.update()
+
+    tipo_dropdown.on_select = actualizar_motivos
+    actualizar_motivos()
     referencia_field = ft.TextField(label="Referencia (opcional)")
     observacion_field = ft.TextField(label="Observacion (opcional)")
 
@@ -64,7 +81,7 @@ def MovimientosView(page: ft.Page) -> ft.Control:
                     ft.DataCell(ft.Text(nombre_producto(m["producto_id"]))),
                     ft.DataCell(ft.Text(m["tipo"])),
                     ft.DataCell(ft.Text(formatear_cantidad(m["cantidad"]))),
-                    ft.DataCell(ft.Text(m["motivo"])),
+                    ft.DataCell(ft.Text(m["motivo_label"])),
                 ]
             )
             for m in resultado["items"]
@@ -78,13 +95,14 @@ def MovimientosView(page: ft.Page) -> ft.Control:
 
             cantidad = Decimal((cantidad_field.value or "0").replace(",", "."))
             producto_id = int(producto_dropdown.value)
-            motivo = motivo_dropdown.value or "ajuste"
+            motivo = motivo_dropdown.value
             referencia = referencia_field.value or None
             observacion = observacion_field.value or None
 
             if tipo_dropdown.value == "ingreso":
                 movimientos_service.registrar_ingreso(
-                    producto_id, cantidad, motivo, referencia, observacion
+                    producto_id, cantidad, motivo, referencia, observacion,
+                    costo_unitario=parsear_decimal_ar_opcional(costo_field.value, "El costo"),
                 )
             else:
                 movimientos_service.registrar_egreso(
@@ -92,6 +110,7 @@ def MovimientosView(page: ft.Page) -> ft.Control:
                 )
 
             cantidad_field.value = ""
+            costo_field.value = ""
             referencia_field.value = ""
             observacion_field.value = ""
             refrescar_tabla()
@@ -111,8 +130,10 @@ def MovimientosView(page: ft.Page) -> ft.Control:
     encabezado = ft.Column(
         [
             ft.Text("Movimientos", size=20, weight=ft.FontWeight.BOLD),
+            aviso_texto,
             ft.Row([producto_dropdown, tipo_dropdown, cantidad_field]),
-            ft.Row([motivo_dropdown, referencia_field, observacion_field]),
+            ft.Row([motivo_dropdown, costo_field, referencia_field, observacion_field],
+                   vertical_alignment=ft.CrossAxisAlignment.START),
             ft.ElevatedButton("Registrar movimiento", on_click=guardar),
         ],
         spacing=10,

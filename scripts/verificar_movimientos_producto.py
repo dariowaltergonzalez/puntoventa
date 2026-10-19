@@ -18,7 +18,7 @@ from app.shared.money import entero_a_cantidad, entero_a_precio
 
 
 def main():
-    codigo = sys.argv[1] if len(sys.argv) > 1 else "ARR001"
+    codigo = sys.argv[1] if len(sys.argv) > 1 else "LAV001"
     conn = get_connection()
     try:
         producto = conn.execute("SELECT id, codigo, nombre FROM productos WHERE codigo = ?", (codigo,)).fetchone()

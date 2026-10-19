@@ -449,25 +449,40 @@ def listar_ventas_pagina(
     return {"items": [obtener_venta(f["id"]) for f in filas], "total": total}
 
 
-def calcular_ganancia_venta(venta: dict) -> Decimal:
-    """Ganancia real: precio de venta (ya con descuentos aplicados a nivel linea) menos el costo
-    real de los lotes efectivamente consumidos. Se calcula siempre al momento, nunca se guarda.
-    Las notas de credito restan lo acreditado y devuelven el costo de lo que volvio al stock (lo
-    que no volvio -- roto, vencido -- queda como perdida: su costo sigue contando)."""
-    def precio_neto(cantidad: Decimal, precio: Decimal, descuento: Decimal | None) -> Decimal:
-        monto = cantidad * precio
-        if descuento is not None:
-            monto = monto * (Decimal("1") - descuento / Decimal("100"))
-        return monto
+def _total_sin_iva(venta_fila: sqlite3.Row, lineas: list[dict]) -> Decimal:
+    """Lo cobrado por esas lineas con TODOS los descuentos de la venta (linea, % del cliente,
+    % sobre el total) pero sin IVA: el IVA no es plata del negocio, es del fisco."""
+    descuento_cliente = venta_fila["descuento_cliente_porcentaje"]
+    return calcular_totales(
+        lineas,
+        entero_a_porcentaje(descuento_cliente) if descuento_cliente is not None else None,
+        venta_fila["descuento_total_porcentaje"],
+        None,
+    )["total"]
 
-    ganancia = Decimal("0")
-    for item in venta["items"]:
-        costo_lotes = sum((l["cantidad"] * l["costo_unitario"] for l in item["lotes"]), Decimal("0"))
-        ganancia += precio_neto(item["cantidad"], item["precio_unitario"], item["descuento_item_porcentaje"]) - costo_lotes
-    for nc in venta.get("notas_credito", []):
-        for f in ventas_repo.listar_items_nota_credito(nc["id"]):
-            descuento = entero_a_porcentaje(f["descuento_item_porcentaje"]) if f["descuento_item_porcentaje"] is not None else None
-            ganancia -= precio_neto(entero_a_cantidad(f["cantidad"]), entero_a_precio(f["precio_unitario"]), descuento)
+
+def detalle_ganancia_venta(venta: dict) -> dict:
+    """Ganancia real de una venta, siempre calculada al momento (nunca se guarda):
+      ingresos = lo cobrado sin IVA, con todos los descuentos, menos lo acreditado por notas de credito
+      costo    = costo real de los lotes FIFO consumidos, menos el de lo que volvio al stock
+    Lo que una nota de credito no devolvio al stock (roto, vencido) sigue en el costo: es perdida."""
+    venta_fila = ventas_repo.obtener_por_id(venta["id"])
+    lineas_venta = [dict(f) for f in ventas_repo.listar_items(venta["id"])]
+    ingresos = _total_sin_iva(venta_fila, lineas_venta)
+    costo = sum(
+        (l["cantidad"] * l["costo_unitario"] for item in venta["items"] for l in item["lotes"]), Decimal("0"),
+    )
+    for nc in venta["notas_credito"]:
+        lineas_nc = [dict(f) for f in ventas_repo.listar_items_nota_credito(nc["id"])]
+        ingresos -= _total_sin_iva(venta_fila, lineas_nc)
+        for f in lineas_nc:
             for l in ventas_repo.listar_lotes_de_item_nota_credito(f["id"]):
-                ganancia += entero_a_cantidad(l["cantidad"]) * entero_a_precio(l["costo_unitario"])
-    return ganancia.quantize(Decimal("1.00"))
+                costo -= entero_a_cantidad(l["cantidad"]) * entero_a_precio(l["costo_unitario"])
+    if venta["notas_credito"] and not venta["queda_por_acreditar"]:
+        ingresos = Decimal("0")  # acreditada entera: sin centavos sueltos de redondeo
+    costo = costo.quantize(Decimal("1.00"))
+    return {"ingresos": ingresos, "costo": costo, "ganancia": ingresos - costo}
+
+
+def calcular_ganancia_venta(venta: dict) -> Decimal:
+    return detalle_ganancia_venta(venta)["ganancia"]

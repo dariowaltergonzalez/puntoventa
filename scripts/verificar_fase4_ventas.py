@@ -31,7 +31,7 @@ efectivo = medios["Efectivo"]
 cuenta_corriente = medios["Cuenta corriente"]
 
 # ================= Caso 1: venta simple, consume el lote 'inicial' (Arroz) =================
-arroz = next(p for p in productos_service.listar_productos() if p["codigo"] == "ARR001")
+arroz = next(p for p in productos_service.listar_productos() if p["codigo"] == "LAV001")
 stock_antes = arroz["stock_actual"]
 print(f"Arroz stock antes: {stock_antes}")
 
@@ -70,7 +70,7 @@ clientes = clientes_service.listar_clientes()
 cliente_con_descuento = next((c for c in clientes if c["porcentaje_descuento"]), None)
 if cliente_con_descuento:
     print(f"\nCliente con descuento fijo: {cliente_con_descuento['razon_social']} ({cliente_con_descuento['porcentaje_descuento']}%)")
-    fideos = next(p for p in productos_service.listar_productos() if p["codigo"] == "FID001")
+    fideos = next(p for p in productos_service.listar_productos() if p["codigo"] == "DET001")
     precio = fideos["precio_venta"]
     cantidad = Decimal("3")
     descuento_item = Decimal("10")
@@ -95,7 +95,7 @@ else:
 # ================= Caso 4: pago dividido, cargo parcial en Cuentas Corrientes =================
 cliente_generico = clientes_service.obtener_o_crear_cliente_generico()
 saldo_cc_antes = cc_service.calcular_saldo_total("cliente", cliente_generico["id"])
-garbanzos = next(p for p in productos_service.listar_productos() if p["codigo"] == "FF2565")
+garbanzos = next(p for p in productos_service.listar_productos() if p["codigo"] == "JAB001")
 if garbanzos["stock_actual"] >= 1:
     precio_garbanzos = garbanzos["precio_venta"]
     total_venta4 = precio_garbanzos * 1

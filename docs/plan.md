@@ -433,6 +433,32 @@ Surgió al probar el circuito completo "recibo la OC a crédito → le pago al p
 
 ---
 
+# Ganancia (auditada 2026-10-19)
+
+Antes de mostrar cualquier reporte, se auditó el cálculo. Reglas:
+
+- **Ganancia de una venta** = lo cobrado **sin IVA** y con **todos** los descuentos (línea,
+  % fijo del cliente, % sobre el total), menos lo acreditado por notas de crédito, **menos**
+  el costo real de los lotes FIFO consumidos (descontando lo que volvió al stock). Lo que una
+  nota de crédito no devuelve al stock sigue siendo costo: es pérdida. Se muestra en el
+  detalle de cada venta. (Antes ignoraba el % del cliente y el % sobre el total: inflaba la
+  ganancia.)
+- **Ajustes de stock** (pantalla Movimientos): solo motivos de ajuste — ingreso: stock
+  inicial, sobrante de inventario (crea un lote con costo: el último del producto o el que se
+  indique); egreso: rotura, vencimiento, pérdida/robo, consumo interno, faltante de inventario
+  (consume lotes FIFO: la pérdida queda valorizada al costo real). Compras, ventas y
+  devoluciones ya no se cargan a mano: tienen su circuito.
+- **Control permanente**: `scripts/verificar_cuadre.py` (stock = lotes = movimientos, ventas
+  cobradas por su total, etc.) y avisa ventas con pérdida.
+- **Pendiente — pantalla de Ganancias por período**: ventas netas − costo de lo vendido =
+  ganancia bruta; − pérdidas por ajustes (roturas, vencimientos...) = ganancia bruta real.
+- **Fuera por ahora** (a charlar con el dueño): gastos del negocio (alquiler, luz, sueldos)
+  para llegar a la ganancia neta; deudas incobrables; si el IVA de las compras es costo
+  (depende de si es monotributista o responsable inscripto); avisar al vender por debajo del
+  costo.
+
+---
+
 # Datos del negocio (especificado 2026-10-19)
 
 **Terminología**: a quien usa la app (el amigo de Dario) se le dice **el dueño**, y a su

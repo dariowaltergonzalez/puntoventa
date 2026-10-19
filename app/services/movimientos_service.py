@@ -1,10 +1,10 @@
 import sqlite3
 from decimal import Decimal
 
-from app.repositories import movimientos_repo, productos_repo
+from app.repositories import lotes_repo, movimientos_repo, productos_repo
 from app.services import log_service
 from app.services.exceptions import ProductoInactivoError, ProductoNoEncontradoError, StockInsuficienteError
-from app.shared.money import cantidad_a_entero, entero_a_cantidad
+from app.shared.money import cantidad_a_entero, entero_a_cantidad, entero_a_precio, formatear_precio, precio_a_entero
 
 
 def _a_dict(fila: sqlite3.Row) -> dict:
@@ -15,6 +15,7 @@ def _a_dict(fila: sqlite3.Row) -> dict:
         "cantidad": entero_a_cantidad(fila["cantidad"]),
         "fecha": fila["fecha"],
         "motivo": fila["motivo"],
+        "motivo_label": MOTIVOS_LABEL.get(fila["motivo"], fila["motivo"]),
         "referencia": fila["referencia"],
         "observacion": fila["observacion"],
     }
@@ -29,28 +30,58 @@ def _obtener_producto_o_falla(producto_id: int) -> sqlite3.Row:
     return producto
 
 
+# Lo unico que se carga a mano en Movimientos son ajustes. Compras, ventas y devoluciones
+# tienen su propio circuito (OC, caja, nota de credito) que deja costo, comprobante y plata:
+# cargarlas a mano aca las dejaria afuera de la ganancia.
+MOTIVOS_INGRESO = {
+    "stock_inicial": "Stock inicial",
+    "ajuste_sobrante": "Ajuste de inventario (sobrante)",
+}
+MOTIVOS_EGRESO = {
+    "rotura": "Rotura",
+    "vencimiento": "Vencimiento",
+    "perdida": "Perdida / robo",
+    "consumo_interno": "Consumo interno",
+    "ajuste_faltante": "Ajuste de inventario (faltante)",
+}
+MOTIVOS_LABEL = {
+    **MOTIVOS_INGRESO, **MOTIVOS_EGRESO,
+    "compra": "Compra", "venta": "Venta", "devolucion": "Devolucion (nota de credito)", "ajuste": "Ajuste",
+}
+
+
 def registrar_ingreso(
     producto_id: int,
     cantidad: Decimal,
     motivo: str,
     referencia: str | None = None,
     observacion: str | None = None,
+    costo_unitario: Decimal | None = None,
 ) -> dict:
+    """Crea un lote propio para lo que entra. costo_unitario None = el del ultimo lote del
+    producto, o si nunca tuvo, su precio de costo de la ficha."""
     producto = _obtener_producto_o_falla(producto_id)
+    if motivo not in MOTIVOS_INGRESO:
+        raise ValueError(f"Motivo de ingreso invalido: las compras se cargan desde Compras (motivos: {list(MOTIVOS_INGRESO)})")
     if cantidad <= 0:
         raise ValueError("La cantidad debe ser mayor a cero")
+    if costo_unitario is not None:
+        if costo_unitario < 0:
+            raise ValueError("El costo no puede ser negativo")
+        costo_entero = precio_a_entero(costo_unitario)
+    else:
+        costo_entero = lotes_repo.obtener_ultimo_costo(producto_id)
+        if costo_entero is None:
+            costo_entero = producto["precio_costo"]
 
-    movimiento_id = movimientos_repo.registrar_movimiento_y_actualizar_stock(
-        producto_id=producto_id,
-        tipo="ingreso",
-        cantidad=cantidad_a_entero(cantidad),
-        motivo=motivo,
-        referencia=referencia,
-        observacion=observacion,
-    )
+    movimiento_id = movimientos_repo.registrar_ajuste_con_lotes(
+        producto_id, "ingreso", cantidad_a_entero(cantidad), motivo, observacion, referencia,
+        costo_unitario=costo_entero, origen_lote="inicial" if motivo == "stock_inicial" else "ajuste",
+    )[0]
     log_service.registrar(
         "producto", producto_id,
-        f"Se registro un ingreso de {cantidad} {producto['unidad']} en '{producto['nombre']}' (motivo: {motivo})",
+        f"Se registro un ingreso de {cantidad} {producto['unidad']} en '{producto['nombre']}' "
+        f"({MOTIVOS_LABEL[motivo]}, costo {formatear_precio(entero_a_precio(costo_entero))})",
     )
     return _obtener_movimiento(movimiento_id)
 
@@ -62,7 +93,10 @@ def registrar_egreso(
     referencia: str | None = None,
     observacion: str | None = None,
 ) -> dict:
+    """Consume los lotes FIFO, igual que una venta: la perdida queda valorizada al costo real."""
     producto = _obtener_producto_o_falla(producto_id)
+    if motivo not in MOTIVOS_EGRESO:
+        raise ValueError(f"Motivo de egreso invalido: las ventas se cargan desde la caja (motivos: {list(MOTIVOS_EGRESO)})")
     if cantidad <= 0:
         raise ValueError("La cantidad debe ser mayor a cero")
 
@@ -72,17 +106,12 @@ def registrar_egreso(
             f"Stock insuficiente: hay {stock_actual}, se pidio egresar {cantidad}"
         )
 
-    movimiento_id = movimientos_repo.registrar_movimiento_y_actualizar_stock(
-        producto_id=producto_id,
-        tipo="egreso",
-        cantidad=cantidad_a_entero(cantidad),
-        motivo=motivo,
-        referencia=referencia,
-        observacion=observacion,
-    )
+    movimiento_id = movimientos_repo.registrar_ajuste_con_lotes(
+        producto_id, "egreso", cantidad_a_entero(cantidad), motivo, observacion, referencia,
+    )[0]
     log_service.registrar(
         "producto", producto_id,
-        f"Se registro un egreso de {cantidad} {producto['unidad']} en '{producto['nombre']}' (motivo: {motivo})",
+        f"Se registro un egreso de {cantidad} {producto['unidad']} en '{producto['nombre']}' ({MOTIVOS_LABEL[motivo]})",
     )
     return _obtener_movimiento(movimiento_id)
 
@@ -95,9 +124,9 @@ def registrar_ajuste(
     referencia: str | None = None,
 ) -> dict:
     if tipo == "ingreso":
-        return registrar_ingreso(producto_id, cantidad, motivo="ajuste", referencia=referencia, observacion=observacion)
+        return registrar_ingreso(producto_id, cantidad, "ajuste_sobrante", referencia=referencia, observacion=observacion)
     if tipo == "egreso":
-        return registrar_egreso(producto_id, cantidad, motivo="ajuste", referencia=referencia, observacion=observacion)
+        return registrar_egreso(producto_id, cantidad, "ajuste_faltante", referencia=referencia, observacion=observacion)
     raise ValueError("tipo debe ser 'ingreso' o 'egreso'")
 
 

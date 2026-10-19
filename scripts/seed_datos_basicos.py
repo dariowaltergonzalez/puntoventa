@@ -112,6 +112,7 @@ def main() -> None:
         ("Tarjeta de credito", False),
         ("Transferencia", False),
         ("Cuenta corriente", True),
+        ("Cheque", False),
     ]
     for nombre, es_cc in medios_a_crear:
         if nombre not in medios_existentes:
@@ -183,12 +184,12 @@ def main() -> None:
     for p in productos_creados:
         print(f"   OK: {p['codigo']} - {p['nombre']}")
 
-    print("7. Cargando stock inicial (ingreso por compra)...")
+    print("7. Cargando stock inicial (con su lote, al precio de costo de la ficha)...")
     cantidades_iniciales = [30, 25, 15, 10, 40, 8, 20, 12]
     for producto, cantidad in zip(productos_creados, cantidades_iniciales):
         if producto["stock_actual"] == 0:
             movimientos_service.registrar_ingreso(
-                producto["id"], Decimal(cantidad), motivo="carga inicial de stock (seed)"
+                producto["id"], Decimal(cantidad), motivo="stock_inicial", observacion="Carga inicial (seed)",
             )
     print("   OK: stock inicial cargado")
 
