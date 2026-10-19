@@ -449,7 +449,7 @@ def listar_ventas_pagina(
     return {"items": [obtener_venta(f["id"]) for f in filas], "total": total}
 
 
-def _total_sin_iva(venta_fila: sqlite3.Row, lineas: list[dict]) -> Decimal:
+def total_sin_iva(venta_fila: sqlite3.Row, lineas: list[dict]) -> Decimal:
     """Lo cobrado por esas lineas con TODOS los descuentos de la venta (linea, % del cliente,
     % sobre el total) pero sin IVA: el IVA no es plata del negocio, es del fisco."""
     descuento_cliente = venta_fila["descuento_cliente_porcentaje"]
@@ -468,13 +468,13 @@ def detalle_ganancia_venta(venta: dict) -> dict:
     Lo que una nota de credito no devolvio al stock (roto, vencido) sigue en el costo: es perdida."""
     venta_fila = ventas_repo.obtener_por_id(venta["id"])
     lineas_venta = [dict(f) for f in ventas_repo.listar_items(venta["id"])]
-    ingresos = _total_sin_iva(venta_fila, lineas_venta)
+    ingresos = total_sin_iva(venta_fila, lineas_venta)
     costo = sum(
         (l["cantidad"] * l["costo_unitario"] for item in venta["items"] for l in item["lotes"]), Decimal("0"),
     )
     for nc in venta["notas_credito"]:
         lineas_nc = [dict(f) for f in ventas_repo.listar_items_nota_credito(nc["id"])]
-        ingresos -= _total_sin_iva(venta_fila, lineas_nc)
+        ingresos -= total_sin_iva(venta_fila, lineas_nc)
         for f in lineas_nc:
             for l in ventas_repo.listar_lotes_de_item_nota_credito(f["id"]):
                 costo -= entero_a_cantidad(l["cantidad"]) * entero_a_precio(l["costo_unitario"])

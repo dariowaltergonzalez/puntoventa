@@ -4,6 +4,7 @@ from app.ui.categorias_view import CategoriasView
 from app.ui.cheques_view import ChequesView
 from app.ui.clientes_view import ClientesView
 from app.ui.cuentas_corrientes_view import CuentasCorrientesView
+from app.ui.ganancias_view import GananciasView
 from app.ui.listas_precios_view import ListasPreciosView
 from app.ui.log_view import LogView
 from app.ui.medios_pago_view import MediosPagoView
@@ -44,6 +45,7 @@ GRUPOS_MENU = [
     ]),
     ("Consultas", [
         ("Stock", ft.Icons.BAR_CHART, StockView),
+        ("Ganancias", ft.Icons.TRENDING_UP, GananciasView),
         ("Historial", ft.Icons.HISTORY, LogView),
     ]),
     ("Configuracion", [

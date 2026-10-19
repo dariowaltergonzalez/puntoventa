@@ -450,8 +450,14 @@ Antes de mostrar cualquier reporte, se auditó el cálculo. Reglas:
   devoluciones ya no se cargan a mano: tienen su circuito.
 - **Control permanente**: `scripts/verificar_cuadre.py` (stock = lotes = movimientos, ventas
   cobradas por su total, etc.) y avisa ventas con pérdida.
-- **Pendiente — pantalla de Ganancias por período**: ventas netas − costo de lo vendido =
-  ganancia bruta; − pérdidas por ajustes (roturas, vencimientos...) = ganancia bruta real.
+- **Pantalla de Ganancias** (Consultas → Ganancias, mockup aprobado 2026-10-19): período
+  (hoy / esta semana / este mes / mes anterior / desde-hasta). Ventas netas − costo de lo
+  vendido = ganancia bruta (con margen %); − pérdidas de stock = resultado de la mercadería.
+  Ticket promedio, ganancia por venta, mejor día; gráfico de ganancia bruta por día (por
+  semana si el rango pasa de 2 meses, por mes si pasa de ~1 año); tabla por producto;
+  pérdidas por motivo; ventas con pérdida. Las notas de crédito cuentan en el período en que
+  se emiten. El cuadre controla que el reporte (toda la historia) dé igual que la suma de la
+  ganancia de cada venta.
 - **Fuera por ahora** (a charlar con el dueño): gastos del negocio (alquiler, luz, sueldos)
   para llegar a la ganancia neta; deudas incobrables; si el IVA de las compras es costo
   (depende de si es monotributista o responsable inscripto); avisar al vender por debajo del

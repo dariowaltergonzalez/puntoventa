@@ -93,6 +93,30 @@ for (venta_id,) in db.execute("SELECT id FROM ventas WHERE estado = 'confirmada'
             f"costo {formatear_precio(ganancia['costo'])} (vendido por debajo del costo, o una devolucion que no volvio al stock)"
         )
 regla("Cada venta se cobro exactamente por su total", problemas_cobro)
+
+# ================= Reporte de Ganancias =================
+# Tomando toda la historia, el reporte por periodo y la ganancia de cada venta (detalle) son dos
+# caminos distintos a la misma cuenta: tienen que dar igual al centavo.
+from datetime import date
+
+from app.services import ganancias_service
+
+primera = db.execute("SELECT MIN(fecha) FROM (SELECT fecha FROM ventas UNION ALL SELECT fecha FROM notas_credito)").fetchone()[0]
+problemas_reporte = []
+if primera:
+    reporte = ganancias_service.resumen(date.fromisoformat(primera[:10]), date.today())
+    suma_ventas = sum(
+        (ventas_service.detalle_ganancia_venta(ventas_service.obtener_venta(vid))["ganancia"]
+         for (vid,) in db.execute("SELECT id FROM ventas WHERE estado = 'confirmada'")),
+        Decimal("0"),
+    )
+    if reporte["ganancia_bruta"] != suma_ventas:
+        problemas_reporte.append(
+            f"reporte {formatear_precio(reporte['ganancia_bruta'])} vs suma de las ventas {formatear_precio(suma_ventas)}"
+        )
+    if sum((p["ganancia"] for p in reporte["productos"]), Decimal("0")) != reporte["ganancia_bruta"]:
+        problemas_reporte.append("la tabla por producto no suma la ganancia bruta")
+regla("El reporte de Ganancias coincide con la ganancia de cada venta (toda la historia)", problemas_reporte)
 regla("Ninguna venta tiene acreditado mas de lo que se vendio", problemas_nc)
 
 # ================= Cuentas corrientes =================
