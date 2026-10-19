@@ -311,6 +311,8 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
         contenedor_cargos_puntuales.visible = pago_puntual_switch.value
 
     def texto_medio(p: dict) -> str:
+        if p["nota_credito_numero"]:
+            return f"Nota de credito {p['nota_credito_numero']}"
         cheque = p["cheque"]
         if cheque is None:
             return p["medio_nombre"] or "-"
@@ -375,6 +377,9 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
             observacion = p["observacion"] or "-"
             if anulado:
                 observacion = f"ANULADO {fecha_corta(p['anulado_fecha'])}: {p['anulado_motivo']}"
+                acciones = ft.Text("")
+            elif p["nota_credito_id"] is not None:
+                # Es parte de una nota de credito: se ve, pero no se toca desde Cuentas Corrientes.
                 acciones = ft.Text("")
             else:
                 botones = []

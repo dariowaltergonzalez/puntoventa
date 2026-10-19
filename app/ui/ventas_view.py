@@ -3,17 +3,26 @@ from decimal import Decimal
 
 import flet as ft
 
-from app.services import clientes_service, listas_precios_service, medios_pago_service, productos_service, ventas_service
+from app.services import (
+    clientes_service,
+    listas_precios_service,
+    medios_pago_service,
+    notas_credito_service,
+    productos_service,
+    ventas_service,
+)
 from app.services.exceptions import (
     ClienteNoEncontradoError,
     LineasVaciasError,
     ListaPrecioNoEncontradaError,
     MedioPagoNoEncontradoError,
     MontoPagoInvalidoError,
+    NotaCreditoInvalidaError,
     ProductoInactivoError,
     ProductoNoEncontradoError,
     ProductoSinPrecioError,
     StockInsuficienteError,
+    VentaNoEncontradaError,
 )
 from app.shared.money import formatear_cantidad, formatear_porcentaje, formatear_precio
 from app.ui.campos import FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
@@ -46,6 +55,7 @@ EXCEPCIONES_NEGOCIO = (
     ClienteNoEncontradoError, LineasVaciasError, ListaPrecioNoEncontradaError,
     MedioPagoNoEncontradoError, MontoPagoInvalidoError, ProductoInactivoError,
     ProductoNoEncontradoError, ProductoSinPrecioError, StockInsuficienteError, ValueError,
+    NotaCreditoInvalidaError, VentaNoEncontradaError,
 )
 
 ANCHO_CANT_COL = 158
@@ -488,7 +498,7 @@ def VentasView(page: ft.Page) -> ft.Control:
             "producto_codigo": producto["codigo"], "producto_nombre": producto["nombre"],
             "cantidad": Decimal("1"), "descuento_item_porcentaje": None,
             "cantidad_field": cantidad_field, "precio_texto": precio_texto,
-            "subtotal_texto": subtotal_texto, "stock_texto": stock_texto,
+            "subtotal_texto": subtotal_texto, "stock_texto": stock_texto, "desc_field": desc_field,
         }
 
         def cambiar_cantidad(delta: Decimal) -> None:
@@ -568,6 +578,8 @@ def VentasView(page: ft.Page) -> ft.Control:
         linea = {
             "tipo": "libre", "descripcion_libre": descripcion_field.value, "precio_unitario": None,
             "cantidad": Decimal("1"), "descuento_item_porcentaje": None, "subtotal_texto": subtotal_texto,
+            "descripcion_field": descripcion_field, "precio_field": precio_field,
+            "cantidad_field": cantidad_field, "desc_field": desc_field,
         }
 
         def on_descripcion_change(e: ft.ControlEvent) -> None:
@@ -966,6 +978,7 @@ def VentasView(page: ft.Page) -> ft.Control:
             cheque_box.visible = False
             recibido_field.value = ""
             vuelto_texto.value = "Vuelto: $ 0,00"
+            btn_confirmar_cobro.disabled = False
             page.update()
             await recibido_field.focus()
             return
@@ -973,6 +986,7 @@ def VentasView(page: ft.Page) -> ft.Control:
             efectivo_box.visible = False
             cheque_box.visible = True
             limpiar_campos_cheque()
+            btn_confirmar_cobro.disabled = False
             page.update()
             await cheque_banco_field.focus()
             return
@@ -1123,9 +1137,21 @@ def VentasView(page: ft.Page) -> ft.Control:
                 estado["activo_idx"] = len(tickets) - 1
         renderizar_ticket_activo()
 
-    def confirmar_cobro_click(e: ft.ControlEvent | None = None) -> None:
+    async def confirmar_cobro_click(e: ft.ControlEvent | None = None) -> None:
         t = activo()
-        if t["total_calculado"] is None or restante_cobro(t) > Decimal("0.004") or not t["pagos"]:
+        if t["total_calculado"] is None:
+            return
+        # Un efectivo o cheque a medio cargar (se eligio el medio pero no se dio Enter) se carga
+        # solo: antes F12 no hacia nada y no avisaba, aunque en pantalla ya se viera el vuelto.
+        if restante_cobro(t) > Decimal("0.004") and efectivo_box.visible:
+            await confirmar_efectivo()
+        if restante_cobro(t) > Decimal("0.004") and cheque_box.visible:
+            await confirmar_cheque()
+            if cheque_box.visible:
+                return  # faltan datos del cheque: confirmar_cheque ya aviso cuales
+        restante = restante_cobro(t)
+        if restante > Decimal("0.004") or not t["pagos"]:
+            mostrar_mensaje(f"Falta cubrir {money(restante)}: elegi un medio de pago (F1-F6)", aviso=True)
             return
         try:
             items = construir_items_ticket(t)
@@ -1169,6 +1195,18 @@ def VentasView(page: ft.Page) -> ft.Control:
     tabla_historial = ft.DataTable(columns=[ft.DataColumn(ft.Text(t)) for t in ["Numero", "Cliente", "Fecha", "Total", ""]], rows=[])
     paginador = Paginador(on_cambio=lambda: refrescar_lista_historial())
 
+    def celda_total_historial(v: dict) -> ft.Control:
+        if not v["notas_credito"]:
+            return ft.Text(formatear_precio(v["total"]))
+        # Con notas de credito se muestra lo que realmente quedo vendido (el neto).
+        return ft.Row([
+            ft.Text(formatear_precio(v["total_neto"])),
+            ft.Container(
+                ft.Text("con NC", size=11, color=COLOR_WARNING, italic=True),
+                tooltip=f"Vendido {formatear_precio(v['total'])} - acreditado {formatear_precio(v['total_acreditado'])}",
+            ),
+        ], spacing=6)
+
     def refrescar_lista_historial(e: ft.ControlEvent | None = None) -> None:
         resultado = ventas_service.listar_ventas_pagina(
             pagina=paginador.pagina_actual, tamano_pagina=paginador.tamano_pagina,
@@ -1180,7 +1218,7 @@ def VentasView(page: ft.Page) -> ft.Control:
                 ft.DataCell(ft.Text(v["numero"])),
                 ft.DataCell(ft.Text(v["cliente_nombre"] or "-")),
                 ft.DataCell(ft.Text(v["fecha"][:16])),
-                ft.DataCell(ft.Text(formatear_precio(v["total"]))),
+                ft.DataCell(celda_total_historial(v)),
                 ft.DataCell(ft.IconButton(ft.Icons.VISIBILITY, tooltip="Ver detalle", data=v["id"],
                                             on_click=lambda e: ir_a_detalle_historial(e.control.data))),
             ])
@@ -1206,13 +1244,235 @@ def VentasView(page: ft.Page) -> ft.Control:
     detalle_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
     detalle_info = ft.Text("")
     tabla_detalle_items = ft.DataTable(
-        columns=[ft.DataColumn(ft.Text(t)) for t in ["Producto / Descripcion", "Cantidad", "Precio unit.", "% desc.", "Subtotal"]],
+        columns=[ft.DataColumn(ft.Text(t)) for t in
+                 ["Producto / Descripcion", "Cantidad", "Devuelto", "Precio unit.", "% desc.", "Subtotal"]],
         rows=[],
     )
     tabla_detalle_pagos = ft.DataTable(
         columns=[ft.DataColumn(ft.Text(t)) for t in ["Medio de pago", "Monto", "Recibio", "Vuelto"]], rows=[],
     )
     detalle_total_texto = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
+    detalle_neto_texto = ft.Text("", size=15, color=COLOR_WARNING)
+    titulo_notas_credito = ft.Text("Notas de credito", weight=ft.FontWeight.BOLD)
+    tabla_notas_credito = ft.DataTable(
+        columns=[ft.DataColumn(ft.Text(t)) for t in ["Numero", "Fecha", "Motivo", "Total"]], rows=[],
+    )
+    nota_credito_button = ft.ElevatedButton("Nota de credito")
+    corregir_venta_button = ft.ElevatedButton("Corregir venta")
+
+    # ---------- Panel de nota de credito (inline, sin AlertDialog) ----------
+    # nc_estado["modo"]: 'nota_credito' (se eligen lineas y cantidades) | 'corregir' (todo lo que queda)
+    nc_estado: dict = {"venta": None, "modo": "nota_credito", "lineas": [], "resto": Decimal("0")}
+    nc_titulo = ft.Text("", size=16, weight=ft.FontWeight.BOLD)
+    nc_ayuda = ft.Text("", size=12, color=COLOR_TEXT_SOFT)
+    nc_avisos_texto = ft.Text("", size=13, color=COLOR_WARNING, weight=ft.FontWeight.BOLD)
+    nc_lineas_column = ft.Column([], spacing=6)
+    nc_devolver_todo_button = ft.TextButton("Devolver todo")
+    nc_motivo_field = ft.TextField(label="Motivo (obligatorio)", expand=True)
+    nc_total_texto = ft.Text("", size=16, weight=ft.FontWeight.BOLD)
+    nc_reintegro_cc_texto = ft.Text("", size=13)
+    nc_destino_dropdown = ft.Dropdown(label="El resto", width=420, options=[])
+    nc_confirmar_texto = ft.Text("Emitir nota de credito")
+    nc_confirmar_button = ft.ElevatedButton(content=nc_confirmar_texto)
+    nc_cancelar_button = ft.TextButton("Cancelar")
+    panel_nota_credito = ft.Container(
+        ft.Column([
+            nc_titulo, nc_ayuda, nc_avisos_texto, nc_lineas_column, nc_devolver_todo_button,
+            nc_motivo_field, nc_total_texto, nc_reintegro_cc_texto, nc_destino_dropdown,
+            ft.Row([nc_confirmar_button, nc_cancelar_button]),
+        ], spacing=8),
+        padding=14, border=ft.Border.all(1, COLOR_WARNING), border_radius=10, visible=False,
+    )
+
+    def nc_items_elegidos() -> list[dict]:
+        items = []
+        for l in nc_estado["lineas"]:
+            cantidad = parsear_decimal_ar_opcional(l["cantidad_field"].value, "La cantidad a devolver") or Decimal("0")
+            items.append({"venta_item_id": l["item"]["id"], "cantidad": cantidad, "vuelve_stock": l["stock_checkbox"].value})
+        return items
+
+    def nc_recalcular(e: ft.ControlEvent | None = None) -> None:
+        venta = nc_estado["venta"]
+        nc_confirmar_button.disabled = True
+        nc_reintegro_cc_texto.value = ""
+        nc_destino_dropdown.visible = False
+        try:
+            total = notas_credito_service.previsualizar_total(venta["id"], nc_items_elegidos())
+        except EXCEPCIONES_NEGOCIO as ex:
+            nc_total_texto.value = str(ex)
+            nc_total_texto.color = COLOR_DANGER
+            page.update()
+            return
+        nc_total_texto.value = f"Total de la nota de credito: {money(total)}"
+        nc_total_texto.color = None
+        opciones = notas_credito_service.opciones_reintegro(venta["id"], total)
+        if opciones["a_cuenta_corriente"] > 0:
+            nc_reintegro_cc_texto.value = (
+                f"Se descuentan {money(opciones['a_cuenta_corriente'])} de lo que debe de esta venta en su cuenta corriente."
+            )
+        nc_estado["resto"] = opciones["resto"]
+        if opciones["resto"] > 0:
+            claves = []
+            nc_destino_dropdown.label = f"Que se hace con los {money(opciones['resto'])} restantes"
+            nc_destino_dropdown.options = []
+            for m in opciones["medios"]:
+                claves.append(f"medio:{m['id']}")
+                nc_destino_dropdown.options.append(ft.dropdown.Option(key=f"medio:{m['id']}", text=f"Se le devuelven en {m['nombre']}"))
+            if opciones["permite_a_favor"]:
+                claves.append("a_favor")
+                nc_destino_dropdown.options.append(ft.dropdown.Option(key="a_favor", text="Quedan a favor en su cuenta corriente"))
+            for c in opciones["cheques"]:
+                claves.append(f"cheque:{c['id']}")
+                nc_destino_dropdown.options.append(ft.dropdown.Option(
+                    key=f"cheque:{c['id']}",
+                    text=f"Se le devuelve el cheque {c['banco']} n° {c['numero'] or 's/n'} ({money(c['monto'])})",
+                ))
+            if nc_destino_dropdown.value not in claves:
+                sugerido = opciones["destino_sugerido"]
+                nc_destino_dropdown.value = (
+                    f"cheque:{sugerido['cheque_id']}" if sugerido["tipo"] == "cheque"
+                    else f"medio:{sugerido['medio_pago_id']}" if sugerido.get("medio_pago_id") else None
+                )
+            nc_destino_dropdown.visible = True
+        nc_confirmar_button.disabled = False
+        page.update()
+
+    def nc_destino_elegido() -> dict | None:
+        if nc_estado["resto"] <= 0:
+            return None
+        valor = nc_destino_dropdown.value or ""
+        if valor == "a_favor":
+            return {"tipo": "a_favor"}
+        if valor.startswith("medio:"):
+            return {"tipo": "medio_pago", "medio_pago_id": int(valor.split(":")[1])}
+        if valor.startswith("cheque:"):
+            return {"tipo": "cheque", "cheque_id": int(valor.split(":")[1])}
+        return None
+
+    def nc_devolver_todo(e: ft.ControlEvent | None = None) -> None:
+        for l in nc_estado["lineas"]:
+            l["cantidad_field"].value = formatear_cantidad(l["disponible"])
+        nc_recalcular()
+
+    nc_devolver_todo_button.on_click = nc_devolver_todo
+
+    def mostrar_panel_nota_credito(modo: str) -> None:
+        venta = ventas_service.obtener_venta(detalle_venta_id["valor"])
+        nc_estado.update({"venta": venta, "modo": modo, "lineas": []})
+        es_correccion = modo == "corregir"
+        nc_titulo.value = "Corregir venta" if es_correccion else "Nueva nota de credito"
+        nc_ayuda.value = (
+            "Se acredita todo lo que queda de la venta (la mercaderia vuelve al stock) y se abre la caja "
+            "en una pestaña nueva con el mismo carrito, para ajustarlo y cobrar de nuevo."
+            if es_correccion else
+            "Indica cuanto se devuelve de cada linea. Si algo no vuelve al stock (roto, vencido), destilda el casillero."
+        )
+        avisos = notas_credito_service.avisos_correccion(venta["id"]) if es_correccion else []
+        nc_avisos_texto.visible = bool(avisos)
+        nc_avisos_texto.value = (
+            "Ojo: " + "; ".join(avisos) + ". El ticket nuevo sale con los valores de hoy "
+            "(si queres respetar los de la venta, usa una nota de credito parcial)."
+        ) if avisos else ""
+        nc_motivo_field.value = "Correccion de la venta" if es_correccion else ""
+        nc_confirmar_texto.value = "Acreditar y abrir en la caja" if es_correccion else "Emitir nota de credito"
+        nc_devolver_todo_button.visible = not es_correccion
+        nc_destino_dropdown.value = None
+        filas = []
+        for item in venta["items"]:
+            disponible = item["cantidad"] - item["cantidad_devuelta"]
+            if disponible <= 0:
+                continue
+            cantidad_field = ft.TextField(
+                label="Devolver", width=110, value=formatear_cantidad(disponible) if es_correccion else "0",
+                input_filter=FILTRO_DECIMALES, read_only=es_correccion, on_change=nc_recalcular,
+            )
+            stock_checkbox = ft.Checkbox(
+                label="Vuelve al stock", value=True, visible=item["producto_id"] is not None and not es_correccion,
+                on_change=nc_recalcular,
+            )
+            nombre = item["descripcion_libre"] or f"{item['producto_codigo']} - {item['producto_nombre']}"
+            detalle = f"Vendido {formatear_cantidad(item['cantidad'])}"
+            if item["cantidad_devuelta"] > 0:
+                detalle += f" · ya devuelto {formatear_cantidad(item['cantidad_devuelta'])}"
+            nc_estado["lineas"].append({"item": item, "disponible": disponible,
+                                        "cantidad_field": cantidad_field, "stock_checkbox": stock_checkbox})
+            filas.append(ft.Row([
+                ft.Column([ft.Text(nombre, weight=ft.FontWeight.BOLD), ft.Text(detalle, size=12, color=COLOR_TEXT_SOFT)],
+                          spacing=0, width=320),
+                cantidad_field, stock_checkbox,
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        nc_lineas_column.controls = filas
+        panel_nota_credito.visible = True
+        nc_recalcular()
+
+    def ocultar_panel_nota_credito(e: ft.ControlEvent | None = None) -> None:
+        panel_nota_credito.visible = False
+        page.update()
+
+    nota_credito_button.on_click = lambda e: mostrar_panel_nota_credito("nota_credito")
+    corregir_venta_button.on_click = lambda e: mostrar_panel_nota_credito("corregir")
+    nc_cancelar_button.on_click = ocultar_panel_nota_credito
+
+    def confirmar_nota_credito(e: ft.ControlEvent) -> None:
+        venta = nc_estado["venta"]
+        es_correccion = nc_estado["modo"] == "corregir"
+        items = nc_items_elegidos()
+        try:
+            nota = notas_credito_service.crear_nota_credito(
+                venta["id"], items, nc_motivo_field.value or "", nc_destino_elegido(), es_correccion=es_correccion,
+            )
+        except EXCEPCIONES_NEGOCIO as ex:
+            mostrar_mensaje(str(ex), aviso=True)
+            return
+        panel_nota_credito.visible = False
+        if es_correccion:
+            cargar_venta_en_caja(venta, items)
+            mostrar_mensaje(f"Se emitio la {nota['numero']}. Ajusta el carrito y cobra de nuevo.")
+            return
+        refrescar_detalle()
+        mostrar_mensaje(f"Se emitio la nota de credito {nota['numero']} por {money(nota['total'])}")
+
+    nc_confirmar_button.on_click = confirmar_nota_credito
+
+    def cargar_venta_en_caja(venta: dict, items_acreditados: list[dict]) -> None:
+        """'Corregir venta': abre una pestaña nueva con el mismo cliente, ajustes y lineas
+        (las cantidades que se acaban de acreditar), lista para ajustar y cobrar de nuevo."""
+        t = nuevo_ticket()
+        tickets.append(t)
+        estado["activo_idx"] = len(tickets) - 1
+        es_generico = venta["cliente_nombre"] == clientes_service.NOMBRE_CLIENTE_GENERICO
+        t["usar_generico"] = es_generico
+        t["cliente_id"] = None if es_generico else venta["cliente_id"]
+        t["lista_precio_id"] = venta["lista_precio_id"]
+        t["iva"] = str(venta["iva_porcentaje"]) if venta["iva_porcentaje"] is not None else ""
+        t["descuento_total"] = (
+            formatear_porcentaje(venta["descuento_total_porcentaje"]) if venta["descuento_total_porcentaje"] is not None else ""
+        )
+        t["observacion"] = venta["observacion"] or ""
+        cantidades = {i["venta_item_id"]: i["cantidad"] for i in items_acreditados}
+        for item in venta["items"]:
+            cantidad = cantidades.get(item["id"], Decimal("0"))
+            if cantidad <= 0:
+                continue
+            descuento = item["descuento_item_porcentaje"]
+            if item["producto_id"] is not None:
+                producto = productos_service.obtener_producto(item["producto_id"])
+                agregar_producto(t, producto, cantidad)
+                linea = next((l for l in t["lineas"] if l["tipo"] == "producto" and l["producto_id"] == item["producto_id"]), None)
+            else:
+                linea = crear_linea_libre(t)
+                linea["descripcion_libre"] = item["descripcion_libre"]
+                linea["descripcion_field"].value = item["descripcion_libre"]
+                linea["precio_unitario"] = item["precio_unitario"]
+                linea["precio_field"].value = formatear_precio(item["precio_unitario"])
+                linea["cantidad"] = cantidad
+                linea["cantidad_field"].value = formatear_cantidad(cantidad)
+                t["lineas"].append(linea)
+            if linea is not None and descuento is not None:
+                linea["descuento_item_porcentaje"] = descuento
+                linea["desc_field"].value = formatear_porcentaje(descuento)
+        mostrar_caja()
+        renderizar_ticket_activo()
 
     def refrescar_detalle() -> None:
         venta = ventas_service.obtener_venta(detalle_venta_id["valor"])
@@ -1234,6 +1494,8 @@ def VentasView(page: ft.Page) -> ft.Control:
             ft.DataRow(cells=[
                 ft.DataCell(ft.Text(i["descripcion_libre"] or f"{i['producto_codigo']} - {i['producto_nombre']}")),
                 ft.DataCell(ft.Text(formatear_cantidad(i["cantidad"]))),
+                ft.DataCell(ft.Text(formatear_cantidad(i["cantidad_devuelta"]) if i["cantidad_devuelta"] > 0 else "-",
+                                    color=COLOR_WARNING if i["cantidad_devuelta"] > 0 else None)),
                 ft.DataCell(ft.Text(formatear_precio(i["precio_unitario"]))),
                 ft.DataCell(ft.Text(f"{formatear_porcentaje(i['descuento_item_porcentaje'])}%" if i["descuento_item_porcentaje"] is not None else "-")),
                 ft.DataCell(ft.Text(formatear_precio(subtotal_linea(i)))),
@@ -1250,15 +1512,38 @@ def VentasView(page: ft.Page) -> ft.Control:
             for p in venta["pagos"]
         ]
         detalle_total_texto.value = f"Total: {formatear_precio(venta['total'])}"
+        hay_notas = bool(venta["notas_credito"])
+        detalle_neto_texto.visible = hay_notas
+        detalle_neto_texto.value = (
+            f"Acreditado: {formatear_precio(venta['total_acreditado'])}   ·   Neto: {formatear_precio(venta['total_neto'])}"
+        )
+        titulo_notas_credito.visible = hay_notas
+        tabla_notas_credito.visible = hay_notas
+        tabla_notas_credito.rows = [
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text(nc["numero"] + (" (correccion)" if nc["es_correccion"] else ""))),
+                ft.DataCell(ft.Text(nc["fecha"][:16])),
+                ft.DataCell(ft.Text(nc["motivo"])),
+                ft.DataCell(ft.Text(formatear_precio(nc["total"]))),
+            ])
+            for nc in venta["notas_credito"]
+        ]
+        nota_credito_button.visible = venta["queda_por_acreditar"]
+        corregir_venta_button.visible = venta["queda_por_acreditar"]
         page.update()
 
     seccion_detalle = ft.Column(
         [
             detalle_titulo, detalle_info,
-            ft.ElevatedButton("Volver al listado", on_click=lambda e: mostrar_historial()),
+            ft.Row([
+                ft.ElevatedButton("Volver al listado", on_click=lambda e: mostrar_historial()),
+                nota_credito_button, corregir_venta_button,
+            ]),
+            panel_nota_credito,
             ft.Text("Items", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_items),
             ft.Text("Pagos", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_pagos),
-            detalle_total_texto,
+            detalle_total_texto, detalle_neto_texto,
+            titulo_notas_credito, con_scroll_horizontal(tabla_notas_credito),
         ],
         visible=False, expand=True, scroll=ft.ScrollMode.AUTO, spacing=8,
     )
@@ -1319,6 +1604,7 @@ def VentasView(page: ft.Page) -> ft.Control:
 
     def ir_a_detalle_historial(venta_id: int) -> None:
         detalle_venta_id["valor"] = venta_id
+        panel_nota_credito.visible = False
         seccion_caja.visible = False
         seccion_historial.visible = False
         seccion_detalle.visible = True
@@ -1337,7 +1623,7 @@ def VentasView(page: ft.Page) -> ft.Control:
             if tecla == "ESCAPE":
                 cerrar_cobro()
             elif tecla == "F12":
-                confirmar_cobro_click()
+                await confirmar_cobro_click()
             elif len(tecla) in (2, 3) and tecla[0] == "F" and tecla[1:].isdigit():
                 # F1..F6 eligen el medio de pago en ese orden -- F12 queda reservado arriba para
                 # confirmar, por eso el tope en 6 (nunca hay tantos medios como para chocar).

@@ -116,3 +116,7 @@ class CorreoNoConfiguradoError(Exception):
 
 class EnvioCorreoError(Exception):
     pass
+
+
+class NotaCreditoInvalidaError(Exception):
+    pass

@@ -278,6 +278,9 @@ def crear_venta(
         observacion=(observacion or "").strip() or None,
         items=items_validados,
         pagos=pagos_validados,
+        descuento_cliente_porcentaje=(
+            porcentaje_a_entero(cliente["porcentaje_descuento"]) if cliente["porcentaje_descuento"] else None
+        ),
     )
 
     log_service.registrar(
@@ -342,18 +345,42 @@ def _pago_a_dict(fila: sqlite3.Row) -> dict:
     }
 
 
+def calcular_total_lineas(venta_fila: sqlite3.Row, lineas: list[dict]) -> dict:
+    """Total de un conjunto de lineas con los descuentos e IVA de ESA venta (el % del cliente
+    que tenia al vender, el % sobre el total y el IVA). Lo usan la venta misma y sus notas de
+    credito: asi una nota de credito por todo da exactamente el total de la venta.
+    lineas: [{'cantidad' (x1000), 'precio_unitario' (x100), 'descuento_item_porcentaje' (x100|None)}]"""
+    descuento_cliente = venta_fila["descuento_cliente_porcentaje"]
+    return calcular_totales(
+        lineas,
+        entero_a_porcentaje(descuento_cliente) if descuento_cliente is not None else None,
+        venta_fila["descuento_total_porcentaje"],
+        venta_fila["iva_porcentaje"],
+    )
+
+
+def total_nota_credito(nota_credito_id: int) -> Decimal:
+    """Lo que efectivamente se reintegro (queda guardado en cada reintegro): es la plata que se
+    movio, no un total recalculado -- asi nunca difiere por un centavo de redondeo."""
+    return sum((entero_a_precio(r["monto"]) for r in ventas_repo.listar_reintegros(nota_credito_id)), Decimal("0"))
+
+
 def obtener_venta(venta_id: int) -> dict | None:
     fila = ventas_repo.obtener_por_id(venta_id)
     if fila is None:
         return None
     items = [_item_a_dict(f) for f in ventas_repo.listar_items(venta_id)]
+    devueltas = ventas_repo.cantidades_devueltas_por_item(venta_id)
+    for item in items:
+        item["cantidad_devuelta"] = entero_a_cantidad(devueltas.get(item["id"], 0))
     pagos = [_pago_a_dict(f) for f in ventas_repo.listar_pagos(venta_id)]
     cliente = clientes_service.obtener_cliente(fila["cliente_id"])
     descuento_total = (
         entero_a_porcentaje(fila["descuento_total_porcentaje"])
         if fila["descuento_total_porcentaje"] is not None else None
     )
-    totales = calcular_totales(
+    totales = calcular_total_lineas(
+        fila,
         [
             {
                 "cantidad": cantidad_a_entero(i["cantidad"]),
@@ -365,10 +392,15 @@ def obtener_venta(venta_id: int) -> dict | None:
             }
             for i in items
         ],
-        cliente["porcentaje_descuento"] if cliente else None,
-        fila["descuento_total_porcentaje"],
-        fila["iva_porcentaje"],
     )
+    notas_credito = [
+        {
+            "id": nc["id"], "numero": nc["numero"], "fecha": nc["fecha"], "motivo": nc["motivo"],
+            "es_correccion": bool(nc["es_correccion"]), "total": total_nota_credito(nc["id"]),
+        }
+        for nc in ventas_repo.listar_notas_credito_de_venta(venta_id)
+    ]
+    total_acreditado = sum((nc["total"] for nc in notas_credito), Decimal("0"))
     return {
         "id": fila["id"],
         "numero": fila["numero"],
@@ -385,6 +417,14 @@ def obtener_venta(venta_id: int) -> dict | None:
         "pagos": pagos,
         "subtotal": totales["subtotal"],
         "total": totales["total"],
+        "descuento_cliente_porcentaje": (
+            entero_a_porcentaje(fila["descuento_cliente_porcentaje"])
+            if fila["descuento_cliente_porcentaje"] is not None else None
+        ),
+        "notas_credito": notas_credito,
+        "total_acreditado": total_acreditado,
+        "total_neto": totales["total"] - total_acreditado,
+        "queda_por_acreditar": any(i["cantidad"] > i["cantidad_devuelta"] for i in items),
     }
 
 
@@ -411,12 +451,23 @@ def listar_ventas_pagina(
 
 def calcular_ganancia_venta(venta: dict) -> Decimal:
     """Ganancia real: precio de venta (ya con descuentos aplicados a nivel linea) menos el costo
-    real de los lotes efectivamente consumidos. Se calcula siempre al momento, nunca se guarda."""
+    real de los lotes efectivamente consumidos. Se calcula siempre al momento, nunca se guarda.
+    Las notas de credito restan lo acreditado y devuelven el costo de lo que volvio al stock (lo
+    que no volvio -- roto, vencido -- queda como perdida: su costo sigue contando)."""
+    def precio_neto(cantidad: Decimal, precio: Decimal, descuento: Decimal | None) -> Decimal:
+        monto = cantidad * precio
+        if descuento is not None:
+            monto = monto * (Decimal("1") - descuento / Decimal("100"))
+        return monto
+
     ganancia = Decimal("0")
     for item in venta["items"]:
-        precio_neto = item["cantidad"] * item["precio_unitario"]
-        if item["descuento_item_porcentaje"] is not None:
-            precio_neto = precio_neto * (Decimal("1") - item["descuento_item_porcentaje"] / Decimal("100"))
         costo_lotes = sum((l["cantidad"] * l["costo_unitario"] for l in item["lotes"]), Decimal("0"))
-        ganancia += precio_neto - costo_lotes
+        ganancia += precio_neto(item["cantidad"], item["precio_unitario"], item["descuento_item_porcentaje"]) - costo_lotes
+    for nc in venta.get("notas_credito", []):
+        for f in ventas_repo.listar_items_nota_credito(nc["id"]):
+            descuento = entero_a_porcentaje(f["descuento_item_porcentaje"]) if f["descuento_item_porcentaje"] is not None else None
+            ganancia -= precio_neto(entero_a_cantidad(f["cantidad"]), entero_a_precio(f["precio_unitario"]), descuento)
+            for l in ventas_repo.listar_lotes_de_item_nota_credito(f["id"]):
+                ganancia += entero_a_cantidad(l["cantidad"]) * entero_a_precio(l["costo_unitario"])
     return ganancia.quantize(Decimal("1.00"))

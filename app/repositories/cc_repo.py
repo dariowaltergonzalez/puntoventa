@@ -77,6 +77,7 @@ def crear_pago_con_aplicaciones(
     cheque_id: int | None = None,
     medio_pago_id: int | None = None,
     reemplaza_pago_id: int | None = None,
+    nota_credito_id: int | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> int:
     """Crea el pago y sus aplicaciones a cargos en una unica transaccion atomica.
@@ -90,8 +91,9 @@ def crear_pago_con_aplicaciones(
     try:
         cursor = conn.execute(
             "INSERT INTO cc_pagos (cliente_id, proveedor_id, monto, fecha, observacion, cheque_id, medio_pago_id, "
-            "reemplaza_pago_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (cliente_id, proveedor_id, monto, fecha, observacion, cheque_id, medio_pago_id, reemplaza_pago_id),
+            "reemplaza_pago_id, nota_credito_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (cliente_id, proveedor_id, monto, fecha, observacion, cheque_id, medio_pago_id, reemplaza_pago_id,
+             nota_credito_id),
         )
         pago_id = cursor.lastrowid
         for aplicacion in aplicaciones:
@@ -112,9 +114,10 @@ def crear_pago_con_aplicaciones(
 
 
 _SELECT_PAGO = """
-    SELECT p.*, m.nombre AS medio_nombre
+    SELECT p.*, m.nombre AS medio_nombre, nc.numero AS nota_credito_numero
     FROM cc_pagos p
     LEFT JOIN medios_pago m ON m.id = p.medio_pago_id
+    LEFT JOIN notas_credito nc ON nc.id = p.nota_credito_id
 """
 
 

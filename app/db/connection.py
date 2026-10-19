@@ -994,3 +994,109 @@ def _migrar(conn: sqlite3.Connection) -> None:
         )
         """
     )
+
+    # Fase 5: notas de credito. La venta guarda el % de descuento fijo que tenia el cliente al
+    # vender (hasta ahora se leia del cliente cada vez, y cambiarselo alteraba ventas viejas).
+    columnas_ventas = {fila["name"] for fila in conn.execute("PRAGMA table_info(ventas)")}
+    if "descuento_cliente_porcentaje" not in columnas_ventas:
+        conn.execute("ALTER TABLE ventas ADD COLUMN descuento_cliente_porcentaje INTEGER")
+        # Unica vez, al agregar la columna: las ventas existentes toman el % actual del cliente,
+        # que es justamente con el que se venian mostrando hasta ahora.
+        conn.execute(
+            "UPDATE ventas SET descuento_cliente_porcentaje = "
+            "(SELECT porcentaje_descuento FROM clientes WHERE clientes.id = ventas.cliente_id)"
+        )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notas_credito (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero          TEXT NOT NULL UNIQUE,              -- 'NC-0001'
+            venta_id        INTEGER NOT NULL,                  -- la venta que acredita (nunca se modifica)
+            cliente_id      INTEGER NOT NULL,
+            fecha           TEXT NOT NULL,
+            motivo          TEXT NOT NULL,
+            es_correccion   INTEGER NOT NULL DEFAULT 0,        -- 1 si se emitio desde "Corregir venta"
+            FOREIGN KEY (venta_id) REFERENCES ventas (id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE,
+            FOREIGN KEY (cliente_id) REFERENCES clientes (id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE,
+            CHECK (es_correccion IN (0, 1))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS nota_credito_items (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            nota_credito_id   INTEGER NOT NULL,
+            venta_item_id     INTEGER NOT NULL,                -- precio y descuento salen de la linea vendida
+            cantidad          INTEGER NOT NULL,                -- escalado x1000
+            vuelve_stock      INTEGER NOT NULL DEFAULT 1,      -- 0 = roto/vencido: no vuelve, queda como perdida
+            FOREIGN KEY (nota_credito_id) REFERENCES notas_credito (id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE,
+            FOREIGN KEY (venta_item_id) REFERENCES venta_items (id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE,
+            CHECK (cantidad > 0),
+            CHECK (vuelve_stock IN (0, 1))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS nota_credito_item_lotes (
+            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            nota_credito_item_id   INTEGER NOT NULL,
+            lote_id                INTEGER NOT NULL,           -- el mismo lote del que salio en la venta
+            cantidad               INTEGER NOT NULL,           -- escalado x1000
+            costo_unitario         INTEGER NOT NULL,           -- escalado x100, el costo con que salio
+            FOREIGN KEY (nota_credito_item_id) REFERENCES nota_credito_items (id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE,
+            FOREIGN KEY (lote_id) REFERENCES lotes (id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE,
+            CHECK (cantidad > 0),
+            CHECK (costo_unitario >= 0)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS nota_credito_reintegros (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            nota_credito_id   INTEGER NOT NULL,
+            tipo              TEXT NOT NULL,                   -- 'cuenta_corriente' | 'medio_pago' | 'cheque'
+            monto             INTEGER NOT NULL,                -- escalado x100
+            medio_pago_id     INTEGER,                         -- tipo 'medio_pago': en que se devolvio la plata
+            cheque_id         INTEGER,                         -- tipo 'cheque': el cheque que se le devolvio
+            cc_pago_id        INTEGER,                         -- tipo 'cuenta_corriente': el pago de CC que lo acredita
+            FOREIGN KEY (nota_credito_id) REFERENCES notas_credito (id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE,
+            FOREIGN KEY (medio_pago_id) REFERENCES medios_pago (id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE,
+            FOREIGN KEY (cheque_id) REFERENCES cheques (id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE,
+            FOREIGN KEY (cc_pago_id) REFERENCES cc_pagos (id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE,
+            CHECK (monto > 0),
+            CHECK (tipo IN ('cuenta_corriente', 'medio_pago', 'cheque')),
+            CHECK (tipo != 'medio_pago' OR medio_pago_id IS NOT NULL),
+            CHECK (tipo != 'cheque' OR cheque_id IS NOT NULL),
+            CHECK (tipo != 'cuenta_corriente' OR cc_pago_id IS NOT NULL)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_notas_credito_venta_id ON notas_credito (venta_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_nota_credito_items_venta_item_id ON nota_credito_items (venta_item_id)")
+    columnas_cc_pagos = {fila["name"] for fila in conn.execute("PRAGMA table_info(cc_pagos)")}
+    if "nota_credito_id" not in columnas_cc_pagos:
+        # El credito que una nota de credito deja en la cuenta corriente del cliente.
+        conn.execute("ALTER TABLE cc_pagos ADD COLUMN nota_credito_id INTEGER REFERENCES notas_credito (id)")

@@ -68,6 +68,8 @@ def _pago_a_dict(fila: sqlite3.Row) -> dict:
         "anulado_fecha": fila["anulado_fecha"],
         "anulado_motivo": fila["anulado_motivo"],
         "reemplaza_pago_id": fila["reemplaza_pago_id"],
+        "nota_credito_id": fila["nota_credito_id"],
+        "nota_credito_numero": fila["nota_credito_numero"],
     }
 
 
@@ -243,6 +245,10 @@ def corregir_pago(
         raise AnulacionInvalidaError("Ese pago esta anulado: no se puede corregir")
     if viejo["cheque_id"] is not None:
         raise AnulacionInvalidaError("Un pago con cheque no se corrige: anulalo y cargalo de nuevo")
+    if viejo["nota_credito_id"] is not None:
+        raise AnulacionInvalidaError(
+            f"Este credito es parte de la nota de credito {viejo['nota_credito_numero']}: no se corrige desde aca"
+        )
     medio = _validar_medio_pago(medio_pago_id)
     if monto <= 0:
         raise MontoPagoInvalidoError("El monto del pago debe ser mayor a cero")
@@ -289,6 +295,10 @@ def anular_pago(pago_id: int, motivo: str, fecha: str | None = None) -> dict:
         raise AnulacionInvalidaError(f"No existe el pago {pago_id}")
     if pago["anulado_fecha"]:
         raise AnulacionInvalidaError("Ese pago ya estaba anulado")
+    if pago["nota_credito_id"] is not None:
+        raise AnulacionInvalidaError(
+            f"Este credito es parte de la nota de credito {pago['nota_credito_numero']}: no se anula desde aca"
+        )
 
     accion_cheque = None
     cheque_observacion = None

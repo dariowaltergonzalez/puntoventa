@@ -245,9 +245,50 @@ de productos sin precio, y desglose visible de los 3 descuentos acumulados junto
   membretado por mail. Puede convertirse en venta real.
 - **Pre-venta temporal**: venta sin confirmar guardada con un nombre, no toca stock, se
   borra sola al final del día si no se retoma. Recuperable antes de eso.
-- **Edición/anulación de ventas cerradas**: nota de crédito (dirección ya definida en
-  Fase 4).
+- **Edición/anulación de ventas cerradas**: nota de crédito — especificada abajo
+  (2026-10-19), primera parte de Fase 5 en implementarse.
 - **Reporte de estado de cuenta en PDF**: desde Cuentas Corrientes, descargable.
+
+## Nota de crédito (especificada 2026-10-19)
+
+El dueño todavía no dio requisitos de detalle (el negocio no abrió): estas decisiones las
+tomamos con criterio de comercio chico, para revisar cuando opine.
+
+- **La venta original nunca se toca.** La nota de crédito es un comprobante nuevo con
+  numeración propia (**NC-0001**), que referencia a la venta, con **motivo obligatorio**. Una
+  venta puede tener varias notas de crédito (devoluciones en distintos días). En el historial
+  la venta muestra cuánto se le acreditó y su **total neto**.
+- **Total o parcial**: se elige qué líneas y qué cantidad de cada una se devuelven (nunca más
+  de lo vendido menos lo ya devuelto). El monto se calcula con los mismos precios y
+  descuentos de la venta original (línea, % del cliente, % sobre el total, IVA): una nota de
+  crédito por todo da exactamente el total de la venta.
+- **Stock**: cada línea tiene un check **"vuelve al stock"** (marcado por defecto). Lo que
+  vuelve entra a **los mismos lotes de los que salió, con su costo original** (FIFO y
+  ganancia siguen exactos). Lo que no vuelve (roto, vencido) no toca el stock: queda como
+  pérdida — la ganancia de la venta baja por el precio acreditado, el costo se mantiene.
+- **La plata** (reintegro):
+  - Si la venta tenía parte en **cuenta corriente** y esa deuda sigue pendiente, la nota de
+    crédito primero la descuenta (automático).
+  - El **resto** se elige: **devolver** en un medio de pago (Efectivo, Transferencia...),
+    **dejar a favor** en la cuenta corriente del cliente (vale para la próxima compra; no
+    para el cliente genérico), o **devolver el cheque** con que pagó, si sigue en cartera y el
+    monto coincide (pasa a Baja).
+  - En Cuentas Corrientes el crédito aparece como un pago "Nota de crédito NC-0001", que no se
+    anula ni se corrige desde ahí (es parte de la nota de crédito).
+- **Corregir venta** (para el usuario es "editar"): nota de crédito por todo lo que quede
+  de la venta, con la mercadería de vuelta al stock, y se abre la caja en una pestaña nueva
+  con el carrito precargado (cliente, productos, cantidades, descuentos). Se ajusta y se
+  cobra de nuevo. Los precios se vuelven a resolver con la lista de precios vigente.
+  Es para **errores de carga** (cliente, medio de pago, precio/descuento o producto
+  equivocados); una devolución real del cliente es una nota de crédito. **Sin límite de
+  tiempo** (cualquier corte sería arbitrario): en su lugar, si desde la venta cambió el
+  precio de algún producto o el % fijo del cliente, el panel lo avisa antes de confirmar.
+- La nota de crédito **no se anula** (si se emitió por error, se vuelve a vender).
+- **Snapshot del descuento del cliente**: la venta guarda el % fijo del cliente que tenía al
+  momento de vender (hasta ahora se leía del cliente cada vez, así que cambiarle el % a un
+  cliente cambiaba el total de sus ventas viejas).
+- Más adelante (resto de Fase 5): PDF de la nota de crédito. "Cambio de un producto por otro"
+  = nota de crédito + venta nueva, sin pantalla propia.
 
 ---
 
