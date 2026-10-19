@@ -100,3 +100,19 @@ class ChequeNoEncontradoError(Exception):
 
 class ChequeEstadoInvalidoError(Exception):
     pass
+
+
+class AnulacionInvalidaError(Exception):
+    pass
+
+
+class NegocioNoConfiguradoError(Exception):
+    pass
+
+
+class CorreoNoConfiguradoError(Exception):
+    pass
+
+
+class EnvioCorreoError(Exception):
+    pass

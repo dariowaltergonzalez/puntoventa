@@ -77,6 +77,19 @@ def actualizar_estado(
             conn.close()
 
 
+def volver_a_cartera(cheque_id: int, conn: sqlite3.Connection | None = None) -> None:
+    """Deshace la entrega a un proveedor (se anulo el pago con el que se le entrego): el cheque
+    vuelve a ser nuestro, sin proveedor asociado."""
+    conexion_propia = conn is None
+    if conexion_propia:
+        conn = get_connection()
+    try:
+        conn.execute("UPDATE cheques SET estado = 'en_cartera', proveedor_id = NULL WHERE id = ?", (cheque_id,))
+    finally:
+        if conexion_propia:
+            conn.close()
+
+
 def rechazar(
     cheque_id: int,
     cliente_id: int | None,

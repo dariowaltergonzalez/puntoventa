@@ -917,3 +917,80 @@ def _migrar(conn: sqlite3.Connection) -> None:
     if "cheque_id" not in columnas_cc_pagos:
         conn.execute("ALTER TABLE cc_pagos ADD COLUMN cheque_id INTEGER REFERENCES cheques (id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_pagos_cheque_id ON cc_pagos (cheque_id)")
+
+    # Cierre de Fase 6: medio de pago en cada pago de CC + anulacion de pagos y cargos manuales
+    # (nunca se borran: quedan marcados con fecha y motivo, y dejan de contar en los saldos).
+    columnas_cc_pagos = {fila["name"] for fila in conn.execute("PRAGMA table_info(cc_pagos)")}
+    if "medio_pago_id" not in columnas_cc_pagos:
+        conn.execute("ALTER TABLE cc_pagos ADD COLUMN medio_pago_id INTEGER REFERENCES medios_pago (id)")
+    if "anulado_fecha" not in columnas_cc_pagos:
+        conn.execute("ALTER TABLE cc_pagos ADD COLUMN anulado_fecha TEXT")
+    if "anulado_motivo" not in columnas_cc_pagos:
+        conn.execute("ALTER TABLE cc_pagos ADD COLUMN anulado_motivo TEXT")
+    if "reemplaza_pago_id" not in columnas_cc_pagos:
+        # Si el pago nacio de una correccion, el pago viejo (anulado) al que reemplaza -- para
+        # mostrar "antes: ..." en la fila vigente sin tener que ver la fila anulada.
+        conn.execute("ALTER TABLE cc_pagos ADD COLUMN reemplaza_pago_id INTEGER REFERENCES cc_pagos (id)")
+    columnas_cc_cargos = {fila["name"] for fila in conn.execute("PRAGMA table_info(cc_cargos)")}
+    if "anulado_fecha" not in columnas_cc_cargos:
+        conn.execute("ALTER TABLE cc_cargos ADD COLUMN anulado_fecha TEXT")
+    if "anulado_motivo" not in columnas_cc_cargos:
+        conn.execute("ALTER TABLE cc_cargos ADD COLUMN anulado_motivo TEXT")
+
+    # Datos del negocio: una sola fila en 'negocio' + listas de cuentas bancarias y WhatsApp.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS negocio (
+            id                     INTEGER PRIMARY KEY CHECK (id = 1),   -- una sola fila: hay un solo negocio
+            razon_social           TEXT NOT NULL,             -- nombre legal (persona fisica o sociedad): el de la chequera
+            cuit                   TEXT NOT NULL,
+            condicion_iva_id       INTEGER,
+            nombre_fantasia        TEXT,                      -- marca comercial, para el membrete
+            ingresos_brutos        TEXT,
+            inicio_actividades     TEXT,
+            direccion              TEXT,
+            ciudad                 TEXT,
+            provincia              TEXT,
+            codigo_postal          TEXT,
+            telefono               TEXT,
+            email                  TEXT,
+            web                    TEXT,
+            smtp_servidor          TEXT,                      -- la contrasena NO va aca: va al administrador de credenciales de Windows
+            smtp_puerto            INTEGER,
+            smtp_seguridad         TEXT,                      -- 'ssl' | 'starttls' | 'ninguna'
+            smtp_usuario           TEXT,
+            smtp_remitente_nombre  TEXT,
+            smtp_remitente_email   TEXT,
+            FOREIGN KEY (condicion_iva_id) REFERENCES condiciones_iva (id)
+                ON DELETE SET NULL
+                ON UPDATE CASCADE,
+            CHECK (smtp_seguridad IS NULL OR smtp_seguridad IN ('ssl', 'starttls', 'ninguna')),
+            CHECK (smtp_puerto IS NULL OR (smtp_puerto > 0 AND smtp_puerto <= 65535))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS negocio_cuentas_bancarias (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            banco         TEXT NOT NULL,
+            titular       TEXT NOT NULL,                      -- el librador de los cheques propios de esta cuenta
+            cuit_titular  TEXT,
+            cbu           TEXT,
+            alias         TEXT,
+            es_principal  INTEGER NOT NULL DEFAULT 0,
+            CHECK (es_principal IN (0, 1))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS negocio_whatsapp (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero        TEXT NOT NULL,                      -- formato internacional sin '+' ni espacios (ej. 5491122334455), para links wa.me
+            etiqueta      TEXT,                               -- ej. 'Ventas', 'Administracion'
+            es_principal  INTEGER NOT NULL DEFAULT 0,
+            CHECK (es_principal IN (0, 1))
+        )
+        """
+    )

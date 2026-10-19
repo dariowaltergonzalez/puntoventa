@@ -335,6 +335,8 @@ CREATE TABLE IF NOT EXISTS cc_cargos (
     origen_venta_id       INTEGER,                     -- nullable: solo si origen = 'venta'
     origen_cheque_id      INTEGER,                     -- nullable: solo si origen = 'cheque_rechazado'
     observacion           TEXT,
+    anulado_fecha         TEXT,                        -- NULL = vigente (solo se anulan cargos manuales)
+    anulado_motivo        TEXT,
     FOREIGN KEY (cliente_id) REFERENCES clientes (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
@@ -366,6 +368,10 @@ CREATE TABLE IF NOT EXISTS cc_pagos (
     fecha          TEXT NOT NULL,
     observacion    TEXT,
     cheque_id      INTEGER,                    -- nullable: si el pago se hizo/recibio con un cheque
+    medio_pago_id  INTEGER,                    -- nullable solo por pagos viejos; la app siempre lo carga
+    anulado_fecha  TEXT,                       -- NULL = vigente; si no, el pago no cuenta en los saldos
+    anulado_motivo TEXT,
+    reemplaza_pago_id INTEGER,                 -- si nacio de una correccion: el pago viejo (anulado) que reemplaza
     FOREIGN KEY (cliente_id) REFERENCES clientes (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
@@ -373,6 +379,12 @@ CREATE TABLE IF NOT EXISTS cc_pagos (
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
     FOREIGN KEY (cheque_id) REFERENCES cheques (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (medio_pago_id) REFERENCES medios_pago (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (reemplaza_pago_id) REFERENCES cc_pagos (id)
         ON DELETE RESTRICT
         ON UPDATE CASCADE,
     CHECK ((cliente_id IS NULL) != (proveedor_id IS NULL)),
@@ -543,3 +555,52 @@ CREATE INDEX IF NOT EXISTS idx_venta_item_lotes_lote_id ON venta_item_lotes (lot
 CREATE INDEX IF NOT EXISTS idx_venta_pagos_venta_id ON venta_pagos (venta_id);
 CREATE INDEX IF NOT EXISTS idx_venta_pagos_medio_pago_id ON venta_pagos (medio_pago_id);
 CREATE INDEX IF NOT EXISTS idx_venta_pagos_cheque_id ON venta_pagos (cheque_id);
+
+-- Datos del negocio
+
+CREATE TABLE IF NOT EXISTS negocio (
+    id                     INTEGER PRIMARY KEY CHECK (id = 1),   -- una sola fila: hay un solo negocio
+    razon_social           TEXT NOT NULL,             -- nombre legal (persona fisica o sociedad): el de la chequera
+    cuit                   TEXT NOT NULL,
+    condicion_iva_id       INTEGER,
+    nombre_fantasia        TEXT,                      -- marca comercial, para el membrete
+    ingresos_brutos        TEXT,
+    inicio_actividades     TEXT,
+    direccion              TEXT,
+    ciudad                 TEXT,
+    provincia              TEXT,
+    codigo_postal          TEXT,
+    telefono               TEXT,
+    email                  TEXT,
+    web                    TEXT,
+    smtp_servidor          TEXT,                      -- la contrasena NO va aca: va al administrador de credenciales de Windows
+    smtp_puerto            INTEGER,
+    smtp_seguridad         TEXT,                      -- 'ssl' | 'starttls' | 'ninguna'
+    smtp_usuario           TEXT,
+    smtp_remitente_nombre  TEXT,
+    smtp_remitente_email   TEXT,
+    FOREIGN KEY (condicion_iva_id) REFERENCES condiciones_iva (id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    CHECK (smtp_seguridad IS NULL OR smtp_seguridad IN ('ssl', 'starttls', 'ninguna')),
+    CHECK (smtp_puerto IS NULL OR (smtp_puerto > 0 AND smtp_puerto <= 65535))
+);
+
+CREATE TABLE IF NOT EXISTS negocio_cuentas_bancarias (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    banco         TEXT NOT NULL,
+    titular       TEXT NOT NULL,                      -- el librador de los cheques propios de esta cuenta
+    cuit_titular  TEXT,
+    cbu           TEXT,
+    alias         TEXT,
+    es_principal  INTEGER NOT NULL DEFAULT 0,
+    CHECK (es_principal IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS negocio_whatsapp (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero        TEXT NOT NULL,                      -- formato internacional sin '+' ni espacios (ej. 5491122334455), para links wa.me
+    etiqueta      TEXT,                               -- ej. 'Ventas', 'Administracion'
+    es_principal  INTEGER NOT NULL DEFAULT 0,
+    CHECK (es_principal IN (0, 1))
+);

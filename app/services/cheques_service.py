@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from app.repositories import cheques_repo
-from app.services import cc_service, clientes_service, log_service, proveedores_service
+from app.services import cc_service, clientes_service, log_service, medios_pago_service, proveedores_service
 from app.services.exceptions import (
     ChequeEstadoInvalidoError,
     ChequeNoEncontradoError,
@@ -47,6 +47,11 @@ def listar_cheques(
         _cheque_a_dict(f)
         for f in cheques_repo.listar(estado=estado, cliente_id=cliente_id, proveedor_id=proveedor_id, origen_tipo=origen_tipo)
     ]
+
+
+def _medio_cheque_id() -> int | None:
+    medio = medios_pago_service.obtener_medio_cheque()
+    return medio["id"] if medio else None
 
 
 def _validar_datos_cheque(banco: str, librador: str, monto: Decimal, fecha_pago: str) -> None:
@@ -93,7 +98,7 @@ def recibir_de_cliente_para_cc(
             entidad_tipo="cliente", entidad_id=cliente_id, monto=monto, fecha=fecha,
             aplicaciones=aplicaciones,
             observacion=f"Pago con cheque {numero or '(sin numero)'} - {banco}",
-            cheque_id=cheque_id,
+            cheque_id=cheque_id, medio_pago_id=_medio_cheque_id(),
         )
     except Exception:
         # Compensacion: si no se pudo aplicar el pago (ej. monto no coincide con la deuda), no
@@ -137,7 +142,7 @@ def entregar_a_proveedor(
         entidad_tipo="proveedor", entidad_id=proveedor_id, monto=monto, fecha=fecha,
         aplicaciones=aplicaciones,
         observacion=observacion or f"Pago con cheque {cheque['numero'] or '(sin numero)'} - {cheque['banco']}",
-        cheque_id=cheque_id,
+        cheque_id=cheque_id, medio_pago_id=_medio_cheque_id(),
     )
     cheques_repo.actualizar_estado(cheque_id, estado="entregado_proveedor", proveedor_id=proveedor_id)
 
@@ -182,7 +187,7 @@ def crear_cheque_propio_y_entregar(
             entidad_tipo="proveedor", entidad_id=proveedor_id, monto=monto, fecha=fecha,
             aplicaciones=aplicaciones,
             observacion=observacion or f"Pago con cheque propio {numero or ''}".strip(),
-            cheque_id=cheque_id,
+            cheque_id=cheque_id, medio_pago_id=_medio_cheque_id(),
         )
         cheques_repo.actualizar_estado(cheque_id, estado="entregado_proveedor", proveedor_id=proveedor_id)
     except Exception:

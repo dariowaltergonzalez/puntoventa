@@ -8,6 +8,7 @@ from app.ui.listas_precios_view import ListasPreciosView
 from app.ui.log_view import LogView
 from app.ui.medios_pago_view import MediosPagoView
 from app.ui.movimientos_view import MovimientosView
+from app.ui.negocio_view import NegocioView
 from app.ui.ordenes_compra_view import OrdenesCompraView
 from app.ui.productos_view import ProductosView
 from app.ui.proveedores_view import ProveedoresView
@@ -44,6 +45,9 @@ GRUPOS_MENU = [
     ("Consultas", [
         ("Stock", ft.Icons.BAR_CHART, StockView),
         ("Historial", ft.Icons.HISTORY, LogView),
+    ]),
+    ("Configuracion", [
+        ("Datos del negocio", ft.Icons.STOREFRONT, NegocioView),
     ]),
 ]
 

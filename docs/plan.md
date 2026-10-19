@@ -16,8 +16,8 @@ el costo genérico del producto.
 
 ## Estado actual del proyecto
 
-App de escritorio en Python con interfaz Flet y base SQLite. Construido, probado y en uso
-real (ya hay ventas reales cargadas):
+App de escritorio en Python con interfaz Flet y base SQLite. Construido y probado; la base
+tiene solo datos de prueba (el negocio todavía no opera con ella):
 
 - **Catálogo**: Categorías, Productos (marca, descripción, código de barras, proveedor
   asociado, stock mínimo con alerta visual), Proveedores, Clientes, Listas de precios.
@@ -31,21 +31,26 @@ real (ya hay ventas reales cargadas):
   cliente/lista/búsqueda, carrito con cantidad y descuento editables por línea, panel de
   cobro no-modal con atajos de teclado F1-F12, registro de cuánto entregó el cliente en
   efectivo y el vuelto derivado). Se bloquea la venta de productos sin precio cargado.
-  Completo y probado contra datos reales.
+  Completo y probado.
 - **Historial interno**: registra altas/cambios campo por campo, y además un resumen en
   JSON del impacto en stock de cada venta/compra (qué producto, cuánta cantidad).
 - Formato de números estilo argentino, buscador en las grillas, paginación SQL en
   pantallas grandes, paleta de colores unificada en toda la app.
+- **Cheques (Fase 6)**: cheques recibidos y propios, circulación a proveedores, baja,
+  rechazo con reapertura de deuda. Medio de pago y anulación de pagos/cargos en Cuentas
+  Corrientes. Completo.
 
-**Pendiente**: Fase 5 (PDF/mail, presupuestos, pre-ventas, anulaciones) y la nueva Fase 6
-(Cheques, ver abajo) — ninguna de las dos arrancada todavía.
+**En curso**: Datos del negocio (ver sección propia más abajo).
+
+**Pendiente**: Fase 5 (PDF/mail, presupuestos, pre-ventas, anulaciones de ventas).
 
 ## Estructura del menú
 
 - **Catálogo**: Categorías, Productos, Proveedores, Clientes, Listas de precios
 - **Operaciones**: Compras, Ventas, Movimientos
-- **Cuentas**: Cuentas Corrientes, Medios de Pago
+- **Cuentas**: Cuentas Corrientes, Medios de Pago, Cheques
 - **Consultas**: Stock, Historial
+- **Configuración**: Datos del negocio
 
 ## Roadmap de fases
 
@@ -55,7 +60,10 @@ real (ya hay ventas reales cargadas):
 4. **Fase 4 — Ventas.** ✅ Completa (backend + consola de caja rápida).
 5. **Fase 5 — PDF + envío de mail**, presupuestos/pre-ventas temporales, edición/anulación
    de ventas cerradas (dirección ya definida: nota de crédito). No arrancada.
-6. **Fase 6 — Cheques.** Recién especificada (ver más abajo), no arrancada.
+6. **Fase 6 — Cheques.** ✅ Completa (incluye medios de pago y anulaciones en Cuentas
+   Corrientes).
+7. **Datos del negocio** — identidad legal, contacto, cuentas bancarias, WhatsApp y correo
+   saliente. Previo a Fase 5 (el membrete y el envío de mails salen de acá).
 
 ---
 
@@ -243,7 +251,7 @@ de productos sin precio, y desglose visible de los 3 descuentos acumulados junto
 
 ---
 
-# FASE 6 — Cheques (especificada 2026-10-13, no arrancada)
+# FASE 6 — Cheques (especificada 2026-10-13, completa 2026-10-19)
 
 ## Contexto del negocio
 
@@ -345,9 +353,102 @@ que ya existía en vez de armar un circuito paralelo:
   de forma atómica), y una compensación manual (si falla aplicar el pago, se borra el cheque
   recién creado — no quedan huérfanos).
 
-**Pendiente**: la pantalla. A definir — ¿una grilla de Cheques aparte (patrón estándar de
-listado), con los puntos de entrada/salida integrados en Ventas (al cobrar), Cuentas
-Corrientes (entrada suelta / salida a proveedor) y Compras (cheque propio)?
+**Pantallas**: grilla de Cheques propia (entrada suelta, salida a proveedor, baja, rechazo) +
+cheque como medio de pago en el cobro de Ventas.
+
+## Cierre de Fase 6: medios de pago y anulaciones en Cuentas Corrientes (2026-10-19)
+
+Surgió al probar el circuito completo "recibo la OC a crédito → le pago al proveedor":
+
+- **Medio de pago en cada pago/cobro de Cuenta Corriente**: el formulario de pago elige un
+  medio del catálogo (Efectivo, Transferencia, Mercado Pago, etc. — nunca "Cuenta
+  corriente", no tiene sentido). Si el medio es **Cheque**:
+  - en la cuenta de un **proveedor**: se elige entre un cheque **en cartera** (el monto es el
+    del cheque, no se parte) o uno **propio** (se cargan sus datos);
+  - en la cuenta de un **cliente**: se cargan los datos del cheque que entrega (queda en
+    cartera).
+  Un pago con dos medios (parte efectivo, parte cheque) son dos pagos seguidos.
+- **Pagar una compra con cheque** queda resuelto así, sin tocar Compras: la recepción queda a
+  crédito y se paga desde la Cuenta Corriente del proveedor con el medio que sea.
+- **Saldo a favor**: si un pago supera la deuda, lo que sobra se descuenta del saldo total
+  de la cuenta (y se muestra como "Saldo a favor" si queda negativo), en vez de perderse.
+- **Anular un pago** (nunca se edita ni se borra): motivo obligatorio, el pago queda en la
+  grilla marcado como anulado y deja de contar, así que los cargos que cubría vuelven a
+  quedar pendientes.
+- **Corregir un pago** (para el usuario es "editar"): el lápiz abre un panel con el medio,
+  monto, fecha y observación del pago; se cambia lo que esté mal y se guarda en un solo paso.
+  Por dentro, el pago viejo queda anulado con un motivo automático ("Corregido: monto
+  70.000,00 -> 67.500,00") y se crea uno nuevo, todo en una sola operación. Los pagos con
+  cheque no se corrigen (el monto de un cheque no cambia): se anulan y se cargan de nuevo.
+  Con cheques:
+  - pago a proveedor con cheque que estaba en cartera → el cheque vuelve a **En cartera**;
+  - pago a proveedor con cheque propio → el cheque pasa a **Baja** (motivo: anulado);
+  - cobro a cliente con cheque → el cheque pasa a **Baja**, salvo que ya se haya entregado a
+    un proveedor: ahí no deja anular hasta anular primero ese otro pago;
+  - si el cheque ya fue rechazado, no se puede anular el pago (la deuda ya se reabrió).
+- **Anular un cargo manual**: mismo criterio (motivo obligatorio, queda marcado). Solo cargos
+  manuales — los de compras/ventas/cheques rechazados se corrigen desde su origen — y solo si
+  no tiene pagos aplicados (primero se anulan esos pagos).
+
+---
+
+# Datos del negocio (especificado 2026-10-19)
+
+**Terminología**: a quien usa la app (el amigo de Dario) se le dice **el dueño**, y a su
+comercio **el negocio**. "Cliente" queda reservado para los Clientes del negocio (la gente
+que le compra).
+
+Pantalla única en **Configuración → Datos del negocio**: un formulario, sin listado (hay un
+solo negocio). Todo cambio queda en el Historial campo por campo.
+
+## Identidad legal
+
+| Campo | Obligatorio | Notas |
+|---|:---:|---|
+| Razón social / titular | Sí | Nombre legal: el nombre y apellido si es persona física, la razón social si es sociedad. Es lo que figura en la chequera y en los comprobantes formales. |
+| CUIT | Sí | |
+| Condición frente al IVA | No | Mismo catálogo que Clientes. |
+| Nombre de fantasía | No | La marca comercial — lo que va grande en el membrete. No tiene valor legal. |
+| Nº de Ingresos Brutos | No | Suele ir en el pie de los comprobantes. |
+| Inicio de actividades | No | Idem. |
+
+## Contacto
+
+Dirección (calle y número, ciudad, provincia, código postal — mismo desglose que Clientes),
+teléfono, email, web/redes.
+
+## Cuentas bancarias (lista)
+
+El negocio puede tener más de una. Cada una: banco, titular y CUIT del titular (por defecto
+los del negocio, editables — una cuenta puede estar a nombre de otra persona), CBU, alias, y
+una marcada como **principal**.
+
+- **Cheque propio**: al pagarle a un proveedor con un cheque propio se elige la cuenta
+  bancaria y se completan solos banco, librador (= titular) y CUIT. Siguen editables.
+- **Fase 5**: CBU/alias para un "Datos para transferir" en presupuestos.
+
+## WhatsApp (lista)
+
+Uno o más números, cada uno con una etiqueta (ej. "Ventas", "Administración") y uno marcado
+como principal. Se guardan en formato internacional para poder armar links de WhatsApp
+(`wa.me`) en Fase 5 (mandar un presupuesto por WhatsApp).
+
+## Correo saliente (SMTP)
+
+Servidor, puerto, seguridad (SSL / STARTTLS / ninguna), usuario, contraseña, nombre y email
+del remitente. Botón **"Enviar mail de prueba"** al email del remitente, para confirmar que
+la configuración funciona antes de necesitarla en Fase 5.
+
+- La **contraseña no se guarda en la base**: va al administrador de credenciales de Windows.
+  Así, quien copie el archivo de la base no se lleva la contraseña. Contra: si se pasa la base
+  a otra PC hay que volver a escribirla una vez.
+- Con Gmail hace falta una "contraseña de aplicación" (no la contraseña normal de la cuenta).
+
+## Fuera de alcance por ahora
+
+- **Logo**: recién tiene sentido con los PDF — se suma en Fase 5.
+- **Facturación electrónica AFIP** (puntos de venta, certificados): fuera de alcance, como
+  siempre.
 
 ---
 

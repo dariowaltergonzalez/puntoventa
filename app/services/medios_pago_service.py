@@ -56,3 +56,12 @@ def obtener_medio_pago(medio_pago_id: int) -> dict | None:
 
 def listar_medios_pago(solo_activos: bool = False) -> list[dict]:
     return [_a_dict(fila) for fila in medios_pago_repo.listar(solo_activos)]
+
+
+def es_medio_cheque(medio: dict) -> bool:
+    """Mismo criterio que la caja de Ventas: el medio 'Cheque' se reconoce por el nombre."""
+    return "cheque" in medio["nombre"].lower()
+
+
+def obtener_medio_cheque() -> dict | None:
+    return next((m for m in listar_medios_pago(solo_activos=True) if es_medio_cheque(m)), None)
