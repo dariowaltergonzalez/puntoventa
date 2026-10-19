@@ -241,7 +241,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
     detalle_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
     detalle_info = ft.Text("")
     editar_button = ft.ElevatedButton("Editar")
-    volver_button = ft.TextButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
+    volver_button = ft.ElevatedButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
 
     tabla_contactos = ft.DataTable(
         columns=[ft.DataColumn(ft.Text(t)) for t in ["Nombre", "Sector", "Email", "Telefono", "Principal", ""]],

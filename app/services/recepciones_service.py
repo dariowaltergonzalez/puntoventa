@@ -172,3 +172,12 @@ def listar_recepciones_de_orden(orden_compra_id: int) -> list[dict]:
 
 def listar_items_recepcion(recepcion_id: int) -> list[dict]:
     return [_item_a_dict(f) for f in recepciones_repo.listar_items(recepcion_id)]
+
+
+def obtener_ultimo_costo(producto_id: int, proveedor_id: int) -> dict | None:
+    """Costo real de la ultima vez que se le recibio este producto a este proveedor,
+    para sugerirlo al cargar una OC nueva. None si nunca se le compro."""
+    fila = recepciones_repo.obtener_ultimo_costo(producto_id, proveedor_id)
+    if fila is None:
+        return None
+    return {"costo_unitario": entero_a_precio(fila["costo_unitario"]), "fecha": fila["fecha"]}

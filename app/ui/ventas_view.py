@@ -1255,7 +1255,7 @@ def VentasView(page: ft.Page) -> ft.Control:
     seccion_detalle = ft.Column(
         [
             detalle_titulo, detalle_info,
-            ft.TextButton("Volver al listado", on_click=lambda e: mostrar_historial()),
+            ft.ElevatedButton("Volver al listado", on_click=lambda e: mostrar_historial()),
             ft.Text("Items", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_items),
             ft.Text("Pagos", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_pagos),
             detalle_total_texto,

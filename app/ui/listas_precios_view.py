@@ -129,7 +129,7 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
     detalle_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
     detalle_info = ft.Text("")
     editar_button = ft.ElevatedButton("Editar")
-    volver_button = ft.TextButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
+    volver_button = ft.ElevatedButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
 
     categorias_options = [
         ft.dropdown.Option(key=str(c["id"]), text=c["nombre"]) for c in categorias_service.listar_categorias()

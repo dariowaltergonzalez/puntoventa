@@ -78,7 +78,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         categoria_dropdown = ft.Dropdown(label="Categoria (opcional)", width=150, visible=False, options=categorias_options, value="")
         descripcion_field = ft.TextField(label="Descripcion", width=220, visible=False)
         cantidad_field = ft.TextField(label="Cantidad", width=100, hint_text="10,000")
-        costo_field = ft.TextField(label="Costo unit.", width=100, hint_text="5,00")
+        costo_field = ft.TextField(label="Costo unit.", width=130, hint_text="5,00", helper_max_lines=2)
         eliminar_button = ft.IconButton(ft.Icons.DELETE, tooltip="Quitar linea")
 
         def cambiar_tipo(e: ft.ControlEvent) -> None:
@@ -93,15 +93,49 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         tipo_dropdown.on_select = cambiar_tipo
 
         fila = ft.Row([tipo_dropdown, producto_dropdown, codigo_field, nombre_field, categoria_dropdown,
-                       descripcion_field, cantidad_field, costo_field, eliminar_button])
+                       descripcion_field, cantidad_field, costo_field, eliminar_button],
+                      vertical_alignment=ft.CrossAxisAlignment.START)
         linea = {
             "tipo_dropdown": tipo_dropdown, "producto_dropdown": producto_dropdown,
             "codigo_field": codigo_field, "nombre_field": nombre_field, "categoria_dropdown": categoria_dropdown,
             "descripcion_field": descripcion_field, "cantidad_field": cantidad_field,
-            "costo_field": costo_field, "fila": fila,
+            "costo_field": costo_field, "fila": fila, "costo_sugerido": None,
         }
         eliminar_button.on_click = lambda e: quitar_linea_pedido(linea)
+
+        def elegir_producto(e: ft.ControlEvent) -> None:
+            sugerir_costo(linea)
+            page.update()
+
+        producto_dropdown.on_select = elegir_producto
         return linea
+
+    def sugerir_costo(linea: dict) -> None:
+        """Completa el costo con el de la ultima compra de ese producto a ese proveedor.
+        Solo pisa el campo si esta vacio o si todavia tiene la sugerencia anterior sin tocar."""
+        costo_field = linea["costo_field"]
+        if (costo_field.value or "") not in ("", linea["costo_sugerido"]):
+            return
+        producto_id = linea["producto_dropdown"].value
+        ultimo = None
+        if producto_id and proveedor_dropdown.value and not proveedor_generico_switch.value:
+            ultimo = recepciones_service.obtener_ultimo_costo(int(producto_id), int(proveedor_dropdown.value))
+        if ultimo is None:
+            if linea["costo_sugerido"] is not None:
+                costo_field.value = ""
+            linea["costo_sugerido"] = None
+            costo_field.helper = None
+            return
+        sugerido = str(ultimo["costo_unitario"]).replace(".", ",")
+        costo_field.value = sugerido
+        linea["costo_sugerido"] = sugerido
+        costo_field.helper = f"Ultima compra {date.fromisoformat(ultimo['fecha'][:10]).strftime('%d/%m/%y')}"
+
+    def sugerir_costos_de_todas_las_lineas(e: ft.ControlEvent | None = None) -> None:
+        for linea in lineas_form:
+            if linea["tipo_dropdown"].value == TIPO_EXISTENTE:
+                sugerir_costo(linea)
+        page.update()
 
     def agregar_linea_pedido(e: ft.ControlEvent | None = None) -> None:
         lineas_form.append(crear_linea_pedido())
@@ -402,6 +436,8 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         page.update()
 
     ya_en_mano_switch.on_change = toggle_ya_en_mano
+    proveedor_dropdown.on_select = sugerir_costos_de_todas_las_lineas
+    proveedor_generico_switch.on_change = sugerir_costos_de_todas_las_lineas
 
     guardar_form_texto = ft.Text("Crear orden de compra")
     guardar_form_button = ft.ElevatedButton(content=guardar_form_texto)
@@ -542,7 +578,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     cancelar_oc_button = ft.ElevatedButton("Cancelar orden", bgcolor=COLOR_DANGER_WASH)
     registrar_recepcion_button = ft.ElevatedButton("Registrar recepcion")
     dar_por_recibida_button = ft.ElevatedButton("Dar por recibida")
-    volver_lista_button = ft.TextButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
+    volver_lista_button = ft.ElevatedButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
 
     motivo_cancelacion_field = ft.TextField(label="Motivo de la cancelacion", visible=False, expand=True)
     confirmar_cancelacion_button = ft.ElevatedButton("Confirmar cancelacion", visible=False)

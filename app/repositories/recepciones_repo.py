@@ -245,6 +245,25 @@ def listar_por_orden(orden_compra_id: int) -> list[sqlite3.Row]:
         conn.close()
 
 
+def obtener_ultimo_costo(producto_id: int, proveedor_id: int) -> sqlite3.Row | None:
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT ri.costo_unitario, r.fecha
+            FROM recepcion_items ri
+            JOIN recepciones r ON r.id = ri.recepcion_id
+            JOIN ordenes_compra oc ON oc.id = r.orden_compra_id
+            WHERE ri.producto_id = ? AND oc.proveedor_id = ?
+            ORDER BY r.fecha DESC, ri.id DESC
+            LIMIT 1
+            """,
+            (producto_id, proveedor_id),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
 def listar_items_por_orden_compra(orden_compra_id: int) -> list[sqlite3.Row]:
     """Todas las lineas de TODAS las recepciones de esta OC (de cualquier recepcion),
     para poder calcular el costo real pagado por cada linea pedida (una linea puede
