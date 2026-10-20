@@ -4,20 +4,35 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from app.services import categorias_service, ordenes_compra_service, productos_service, proveedores_service, recepciones_service
-from app.services.exceptions import (
-    CodigoDuplicadoError,
-    LineasVaciasError,
-    OrdenCompraCanceladaError,
-    OrdenCompraNoEditableError,
-    OrdenCompraNoEncontradaError,
-    ProductoInactivoError,
-    ProductoNoEncontradoError,
-    ProveedorNoEncontradoError,
-)
 from app.shared.money import formatear_cantidad, formatear_porcentaje, formatear_precio
-from app.ui.listados import Paginador, coincide_exacto, coincide_texto, con_scroll_horizontal, filtrar
-from app.ui.theme import COLOR_DANGER_WASH, COLOR_WARNING
-from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
+from app.ui.componentes import (
+    ESPACIO_PANTALLA,
+    ERRORES_PARA_AVISAR,
+    TONO_CURSO,
+    TONO_ESPERA,
+    TONO_NO,
+    TONO_OK,
+    Columna,
+    Lista,
+    accion_abrir,
+    accion_anular,
+    accion_con_motivo,
+    accion_ver,
+    avisar,
+    barra,
+    boton_principal,
+    boton_secundario,
+    botones_formulario,
+    campo_buscar,
+    dato,
+    encabezado_pantalla,
+    etiqueta_estado,
+    rotulo,
+    tabla_simple,
+    ventana_info,
+    tarjeta,
+)
+from app.ui.theme import COLOR_TEXT_SOFT, COLOR_WARNING
 
 TIPO_EXISTENTE = "Producto existente"
 TIPO_NUEVO = "Producto nuevo"
@@ -25,28 +40,20 @@ TIPO_LIBRE = "Item libre"
 
 ESTADOS_LABEL = {
     "pendiente": "Pendiente",
-    "recibida_parcial": "Recibida parcial",
+    "recibida_parcial": "Recibida en parte",
     "recibida": "Recibida",
     "cancelada": "Cancelada",
 }
+ESTADOS_ETIQUETA = {
+    "pendiente": ("Pendiente", TONO_ESPERA),
+    "recibida_parcial": ("Recibida en parte", TONO_CURSO),
+    "recibida": ("Recibida", TONO_OK),
+    "cancelada": ("Cancelada", TONO_NO),
+}
 
-EXCEPCIONES_NEGOCIO = (
-    LineasVaciasError,
-    OrdenCompraCanceladaError,
-    OrdenCompraNoEditableError,
-    OrdenCompraNoEncontradaError,
-    ProductoInactivoError,
-    ProductoNoEncontradoError,
-    ProveedorNoEncontradoError,
-    CodigoDuplicadoError,
-    ValueError,
-)
 
 
 def OrdenesCompraView(page: ft.Page) -> ft.Control:
-    def mostrar_mensaje(texto: str) -> None:
-        page.show_dialog(ft.SnackBar(ft.Text(texto)))
-
     def parsear_decimal(valor: str | None, etiqueta: str) -> Decimal:
         try:
             return Decimal((valor or "0").replace(",", "."))
@@ -282,133 +289,167 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         return {"orden_compra_item_id": None, "producto_id": int(linea["producto_dropdown"].value),
                 "producto_nuevo": None, "descripcion_libre": None, "cantidad_recibida": cantidad, "costo_unitario": costo}
 
-    # ================= SECCION LISTA =================
+    # ================= LISTA =================
     estado_filtro_dropdown = ft.Dropdown(
-        label="Filtrar por estado", width=220,
-        options=[ft.dropdown.Option(key="", text="Todas")] + [
-            ft.dropdown.Option(key=k, text=v) for k, v in ESTADOS_LABEL.items()
-        ],
-        value="",
+        label="Estado", width=190, value="", on_select=lambda e: filtrar(),
+        options=[ft.dropdown.Option(key="", text="Todos")] + [ft.dropdown.Option(key=k, text=v) for k, v in ESTADOS_LABEL.items()],
     )
-    buscador_field = campo_buscar("Numero o proveedor")
-    contador_texto = ft.Text("")
-    nueva_oc_button = ft.ElevatedButton("+ Nueva orden de compra")
-    imprimir_button = ft.ElevatedButton(
-        "Imprimir", icon=ft.Icons.PRINT,
-        on_click=lambda e: mostrar_mensaje("La exportacion a PDF va a estar disponible en una fase futura"),
-    )
-
-    _ANCHOS_COLUMNAS_LISTA = [90, 160, 130, 90, 90, 60, 110]
-    _TITULOS_COLUMNAS_LISTA = ["Numero", "Proveedor", "Estado", "Fecha", "F. estimada", "IVA %", "Total estimado"]
-    encabezado_lista = ft.Row(
+    buscador_field = campo_buscar("Numero o proveedor", al_cambiar=lambda: filtrar())
+    desde_field = ft.TextField(label="Desde", hint_text="AAAA-MM-DD", width=140, on_submit=lambda e: aplicar_fechas())
+    hasta_field = ft.TextField(label="Hasta", hint_text="AAAA-MM-DD", width=140, on_submit=lambda e: aplicar_fechas())
+    # Las fechas se aplican recien con Filtrar (mientras se tipean estan incompletas): el texto y el
+    # estado filtran al instante pero usan las ultimas fechas aplicadas.
+    fechas = {"desde": None, "hasta": None}
+    contador_texto = ft.Text("", size=12.5, color=COLOR_TEXT_SOFT)
+    lista = Lista(
         [
-            ft.Container(ft.Text(t, weight=ft.FontWeight.BOLD), width=w)
-            for t, w in zip(_TITULOS_COLUMNAS_LISTA, _ANCHOS_COLUMNAS_LISTA)
-        ]
-        + [ft.Container(width=40)]
+            Columna("Numero", ancho=110, orden="numero"), Columna("Proveedor", peso=3, orden="proveedor"),
+            Columna("Fecha", ancho=100, orden="fecha_creacion"), Columna("Llega", ancho=100, orden="fecha_estimada"),
+            Columna("Total ($)", ancho=120, derecha=True, orden="total_estimado"), Columna("Estado", ancho=130),
+            Columna("Acciones", ancho=210, derecha=True),
+        ],
+        al_cambiar_pagina=lambda: refrescar_lista(), nombre="ordenes", con_hijos=True,
+        orden_inicial=("fecha_creacion", True), sin_datos="Ninguna orden coincide con los filtros.",
     )
-    lista_filas = ft.Column([])
 
-    def nombre_proveedor(proveedor_id: int) -> str:
-        proveedor = proveedores_service.obtener_proveedor(proveedor_id)
-        return proveedor["nombre"] if proveedor else "?"
+    def fecha_corta(iso: str | None) -> str:
+        return date.fromisoformat(iso[:10]).strftime("%d/%m/%Y") if iso else "-"
 
-    def costo_real_texto(item: dict) -> ft.Text:
+    def costo_real_texto(item: dict) -> ft.Control:
         costo_real = item["costo_real_promedio"]
         if costo_real is None:
             return ft.Text("-")
         difiere = costo_real != item["costo_pactado"]
-        return ft.Text(
-            formatear_precio(costo_real),
-            color=COLOR_WARNING if difiere else None,
-            weight=ft.FontWeight.BOLD if difiere else None,
-        )
+        return ft.Text(formatear_precio(costo_real), color=COLOR_WARNING if difiere else None,
+                       weight=ft.FontWeight.BOLD if difiere else None,
+                       tooltip="Distinto del costo pactado" if difiere else None)
 
-    def construir_fila_oc(oc: dict) -> ft.ExpansionTile:
-        valores = [
-            oc["numero"],
-            nombre_proveedor(oc["proveedor_id"]),
-            ESTADOS_LABEL.get(oc["estado"], oc["estado"]),
-            oc["fecha_creacion"][:10],
-            oc["fecha_estimada"] or "-",
-            f"{formatear_porcentaje(oc['iva_porcentaje']).replace(',00', '')}%" if oc["iva_porcentaje"] else "-",
-            formatear_precio(oc["total_estimado"]),
-        ]
-        celdas = [ft.Container(ft.Text(v), width=w) for v, w in zip(valores, _ANCHOS_COLUMNAS_LISTA)]
-        if oc["recibida_en_el_acto"]:
-            celdas[0] = ft.Container(
-                ft.Row([
-                    ft.Text(oc["numero"]),
-                    ft.Icon(ft.Icons.BOLT, size=16, color=COLOR_WARNING,
-                            tooltip="Creada y recibida en el acto (\"ya la tenes en mano\")"),
-                ], spacing=2, tight=True),
-                width=_ANCHOS_COLUMNAS_LISTA[0],
+    def hijos(oc: dict) -> ft.Control:
+        lineas = tabla_simple(
+            ["Producto / descripcion", "Pedido", "Costo pactado", "Recibido", "Costo real (prom.)"],
+            [[item["descripcion_libre"] or f"{item['producto_codigo']} - {item['producto_nombre']}",
+              formatear_cantidad(item["cantidad_pedida"]), formatear_precio(item["costo_pactado"]),
+              ft.Text(formatear_cantidad(item["cantidad_recibida"]),
+                      color=COLOR_WARNING if item["cantidad_recibida"] > item["cantidad_pedida"] else None),
+              costo_real_texto(item)] for item in oc["items"]],
+            derecha=[1, 2, 3, 4],
+        )
+        filas_recepciones = []
+        for r in recepciones_service.listar_recepciones_de_orden(oc["id"]):
+            items_r = recepciones_service.listar_items_recepcion(r["id"])
+            no_pedidos = sum(1 for i in items_r if i["orden_compra_item_id"] is None)
+            filas_recepciones.append([
+                fecha_corta(r["fecha"]), r["numero_remito"],
+                f"{len(items_r)} item{'' if len(items_r) == 1 else 's'}" + (f" ({no_pedidos} no pedido)" if no_pedidos else ""),
+                formatear_precio(sum((i["subtotal"] for i in items_r), Decimal("0"))), r["observacion"],
+            ])
+        recepciones = tabla_simple(["Fecha", "Remito", "Que llego", "Subtotal", "Observacion"], filas_recepciones,
+                                   derecha=[3], vacio="Todavia no llego nada.")
+        return ft.Row([
+            ft.Column([rotulo("Lineas pedidas"), lineas], spacing=6),
+            ft.Column([rotulo("Recepciones"), recepciones], spacing=6),
+        ], spacing=28, vertical_alignment=ft.CrossAxisAlignment.START, wrap=True)
+
+    def filtrar() -> None:
+        lista.ir_al_principio()
+        refrescar_lista()
+
+    def aplicar_fechas() -> None:
+        try:
+            fechas["desde"], fechas["hasta"] = (
+                date.fromisoformat(campo.value.strip()).isoformat() if (campo.value or "").strip() else None
+                for campo in (desde_field, hasta_field)
             )
-        titulo = ft.Row(
-            celdas
-            + [ft.IconButton(ft.Icons.VISIBILITY, tooltip="Ver detalle / acciones", data=oc["id"],
-                              on_click=lambda e: ir_a_detalle(e.control.data))]
-        )
-        items_tabla = ft.DataTable(
-            columns=[ft.DataColumn(ft.Text(t)) for t in
-                     ["Producto / Descripcion", "Cant. pedida", "Costo pactado", "Cant. recibida", "Costo real (prom.)"]],
-            rows=[
-                ft.DataRow(cells=[
-                    ft.DataCell(ft.Text(item["descripcion_libre"] or f"{item['producto_codigo']} - {item['producto_nombre']}")),
-                    ft.DataCell(ft.Text(formatear_cantidad(item["cantidad_pedida"]))),
-                    ft.DataCell(ft.Text(formatear_precio(item["costo_pactado"]))),
-                    ft.DataCell(ft.Text(formatear_cantidad(item["cantidad_recibida"]))),
-                    ft.DataCell(costo_real_texto(item)),
-                ])
-                for item in oc["items"]
-            ],
-        )
-        return ft.ExpansionTile(
-            title=titulo,
-            controls=[con_scroll_horizontal(items_tabla)],
-            tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
-            affinity=ft.TileAffinity.LEADING,
-        )
+        except ValueError:
+            avisar(page, "Las fechas van con formato AAAA-MM-DD (ej. 2026-10-01)", error=True)
+            return
+        filtrar()
 
-    def refrescar_lista(e: ft.ControlEvent | None = None) -> None:
-        todas = ordenes_compra_service.listar_ordenes_compra()
-        pendientes = sum(1 for o in todas if o["estado"] == "pendiente")
-        parciales = sum(1 for o in todas if o["estado"] == "recibida_parcial")
-        recibidas = sum(1 for o in todas if o["estado"] == "recibida")
-        canceladas = sum(1 for o in todas if o["estado"] == "cancelada")
-        contador_texto.value = (
-            f"Pendientes: {pendientes}   |   Recibidas parcial: {parciales}   |   "
-            f"Recibidas: {recibidas}   |   Canceladas: {canceladas}"
-        )
-
-        def texto_busqueda_oc(oc: dict) -> str:
-            return f"{oc['numero']} {nombre_proveedor(oc['proveedor_id'])}"
-
-        filtradas = filtrar(todas, [
-            lambda o: coincide_exacto(o["estado"], estado_filtro_dropdown.value or None),
-            lambda o: coincide_texto(texto_busqueda_oc(o), buscador_field.value),
-        ])
-        pagina = paginador.aplicar(filtradas)
-        lista_filas.controls = [construir_fila_oc(o) for o in pagina]
+    def refrescar_lista() -> None:
+        proveedores = {p["id"]: p["nombre"] for p in proveedores_service.listar_proveedores()}
+        todas = [dict(o, proveedor=proveedores.get(o["proveedor_id"], "?")) for o in ordenes_compra_service.listar_ordenes_compra()]
+        conteo = {k: sum(1 for o in todas if o["estado"] == k) for k in ESTADOS_LABEL}
+        contador_texto.value = "   ·   ".join(f"{v}: {conteo[k]}" for k, v in ESTADOS_LABEL.items())
+        texto = (buscador_field.value or "").strip().lower()
+        desde, hasta = fechas["desde"], fechas["hasta"]
+        filtradas = [
+            o for o in todas
+            if texto in f"{o['numero']} {o['proveedor']}".lower()
+            and (not estado_filtro_dropdown.value or o["estado"] == estado_filtro_dropdown.value)
+            and (not desde or o["fecha_creacion"][:10] >= desde) and (not hasta or o["fecha_creacion"][:10] <= hasta)
+        ]
+        lista.mostrar(filtradas, celdas, hijos=hijos, valor_orden=lambda o, k: o.get(k))
         page.update()
 
-    paginador = Paginador(on_cambio=refrescar_lista)
-    estado_filtro_dropdown.on_select = refrescar_lista
-    buscador_field.on_change = refrescar_lista
-    nueva_oc_button.on_click = lambda e: ir_a_formulario(None)
+    def celdas(oc: dict) -> list:
+        estado = oc["estado"]
+        vigente = estado in ("pendiente", "recibida_parcial")
+        cancelada = "esta cancelada" if estado == "cancelada" else None
+        numero = ft.Row([ft.Text(oc["numero"], weight=ft.FontWeight.W_500)] + (
+            [ft.Icon(ft.Icons.BOLT, size=16, color=COLOR_WARNING, tooltip="Creada y recibida en el acto")]
+            if oc["recibida_en_el_acto"] else []), spacing=2, tight=True)
+        tiene_recepciones = any(i["cantidad_recibida"] for i in oc["items"])
+        return [
+            numero, oc["proveedor"], fecha_corta(oc["fecha_creacion"]), fecha_corta(oc["fecha_estimada"]),
+            formatear_precio(oc["total_estimado"]), etiqueta_estado(*ESTADOS_ETIQUETA[estado]),
+            ft.Row([
+                accion_ver(ft.Icons.VISIBILITY, "Ver resumen de la orden", lambda oc=oc: ver_resumen(oc)),
+                accion_abrir(ft.Icons.LOCAL_SHIPPING, "Registrar recepcion", lambda oc=oc: ir_a_recepcion(oc),
+                             por_que_no=None if vigente else (cancelada or "ya llego todo")),
+                accion_abrir(ft.Icons.EDIT, "Editar orden", lambda oc=oc: ir_a_formulario(oc["id"]),
+                             por_que_no=cancelada or (None if estado == "pendiente" and not tiene_recepciones
+                                                      else "ya tiene recepciones")),
+                accion_con_motivo(
+                    ft.Icons.DONE_ALL, "Dar por recibida", f"Dar por recibida {oc['numero']}",
+                    "Se cierra con lo que ya llego: lo que falta deja de esperarse.",
+                    lambda motivo, oc=oc: cerrar_orden(oc, motivo),
+                    por_que_no=None if estado == "recibida_parcial" else (
+                        cancelada or ("todavia no llego nada: si no va a llegar, cancelala" if estado == "pendiente"
+                                      else "ya llego todo")),
+                ),
+                accion_anular(
+                    "Cancelar orden", f"Cancelar {oc['numero']}",
+                    f"La orden a {oc['proveedor']} deja de esperarse. Lo que ya llego queda en el stock.",
+                    lambda motivo, oc=oc: cancelar_orden(oc, motivo),
+                    por_que_no=None if vigente else ("ya esta cancelada" if cancelada else "ya llego todo"),
+                ),
+            ], spacing=0, tight=True),
+        ]
 
-    seccion_lista = ft.Column(
-        [
-            ft.Row([estado_filtro_dropdown, buscador_field, imprimir_button, nueva_oc_button],
-                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            contador_texto,
-            tarjeta(encabezado_lista, ft.Divider(height=1), lista_filas, paginador.controles),
-        ],
-        visible=True,
-        spacing=ESPACIO_PANTALLA,
-    )
+    def ver_resumen(oc: dict) -> None:
+        iva = formatear_porcentaje(oc["iva_porcentaje"]).replace(",00", "") if oc["iva_porcentaje"] else "0"
+        ventana_info(
+            page, f"{oc['numero']} · {oc['proveedor']}",
+            dato("Estado", ESTADOS_LABEL[oc["estado"]] + ("  (creada y recibida en el acto)" if oc["recibida_en_el_acto"] else "")),
+            dato("Fecha", fecha_corta(oc["fecha_creacion"])),
+            dato("Llega", fecha_corta(oc["fecha_estimada"])),
+            dato("Neto estimado", f"$ {formatear_precio(oc['neto_estimado'])}"),
+            dato(f"IVA {iva} %", f"$ {formatear_precio(oc['iva_estimado'])}"),
+            dato("Total estimado", f"$ {formatear_precio(oc['total_estimado'])}"),
+            dato("Observacion", oc["observacion"] or "-"),
+        )
 
-    # ================= SECCION FORMULARIO (alta/edicion) =================
+    def cancelar_orden(oc: dict, motivo: str) -> str:
+        ordenes_compra_service.cancelar_orden_compra(oc["id"], motivo)
+        refrescar_lista()
+        return f"{oc['numero']} cancelada"
+
+    def cerrar_orden(oc: dict, motivo: str) -> str:
+        ordenes_compra_service.marcar_recibida_manualmente(oc["id"], motivo)
+        refrescar_lista()
+        return f"{oc['numero']} dada por recibida"
+
+    seccion_lista = ft.Column([
+        barra(
+            [buscador_field, estado_filtro_dropdown, desde_field, hasta_field,
+             boton_secundario("Filtrar", ft.Icons.FILTER_LIST, aplicar_fechas)],
+            [boton_principal("Nueva orden de compra", ft.Icons.ADD, lambda: ir_a_formulario(None))],
+        ),
+        contador_texto,
+        lista.control,
+    ], spacing=ESPACIO_PANTALLA)
+
+    # ================= FORMULARIO (alta / edicion) =================
     form_titulo = ft.Text("Nueva orden de compra", size=15, weight=ft.FontWeight.BOLD)
     proveedor_dropdown = ft.Dropdown(label="Proveedor existente", width=250, options=[])
     proveedor_nuevo_field = ft.TextField(label="O escribi un proveedor nuevo", width=250)
@@ -440,8 +481,6 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     proveedor_generico_switch.on_change = sugerir_costos_de_todas_las_lineas
 
     guardar_form_texto = ft.Text("Crear orden de compra")
-    guardar_form_button = ft.ElevatedButton(content=guardar_form_texto)
-    cancelar_form_button = ft.TextButton("Cancelar", on_click=lambda e: ir_a_lista(None))
 
     def limpiar_formulario() -> None:
         nonlocal editando_oc_id
@@ -469,7 +508,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         form_titulo.value = "Nueva orden de compra"
         agregar_linea_pedido()
 
-    def guardar_formulario(e: ft.ControlEvent) -> None:
+    def guardar_formulario() -> None:
         try:
             items = construir_items_pedido()
             proveedor_id = int(proveedor_dropdown.value) if proveedor_dropdown.value else None
@@ -481,17 +520,14 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             observacion = observacion_field.value
 
             if editando_oc_id is not None:
-                ordenes_compra_service.actualizar_orden_compra(
+                oc = ordenes_compra_service.actualizar_orden_compra(
                     orden_compra_id=editando_oc_id, items=items,
                     proveedor_id=proveedor_id, proveedor_nombre_nuevo=proveedor_nombre_nuevo,
                     usar_proveedor_generico=usar_generico, fecha_estimada=fecha_estimada,
                     iva_porcentaje=iva, observacion=observacion,
                 )
-                mostrar_mensaje("Orden de compra actualizada")
-                ir_a_detalle(editando_oc_id)
-                return
-
-            if ya_en_mano_switch.value:
+                aviso = f"{oc['numero']} guardada"
+            elif ya_en_mano_switch.value:
                 items_recepcion = construir_items_recepcion_desde_pedido()
                 oc = ordenes_compra_service.crear_orden_compra_recibida(
                     items=items, recepcion_items=items_recepcion,
@@ -501,18 +537,19 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                     recepcion_numero_remito=remito_field.value, recepcion_observacion=recepcion_observacion_field.value,
                     a_credito=recepcion_a_credito_switch.value,
                 )
+                aviso = f"{oc['numero']} creada y recibida en el acto"
             else:
                 oc = ordenes_compra_service.crear_orden_compra(
                     items=items, proveedor_id=proveedor_id, proveedor_nombre_nuevo=proveedor_nombre_nuevo,
                     usar_proveedor_generico=usar_generico, fecha_estimada=fecha_estimada,
                     iva_porcentaje=iva, observacion=observacion,
                 )
-            mostrar_mensaje(f"{oc['numero']} creada (estado: {ESTADOS_LABEL.get(oc['estado'], oc['estado'])})")
-            ir_a_detalle(oc["id"])
-        except EXCEPCIONES_NEGOCIO as ex:
-            mostrar_mensaje(str(ex))
-
-    guardar_form_button.on_click = guardar_formulario
+                aviso = f"{oc['numero']} creada"
+        except ERRORES_PARA_AVISAR as ex:
+            avisar(page, str(ex), error=True)
+            return
+        ir_a_lista()
+        avisar(page, aviso)
 
     seccion_formulario = ft.Column(
         [
@@ -521,21 +558,17 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                 ft.Row([fecha_estimada_field, iva_field]),
                 ft.Row([observacion_field]),
                 titulo=form_titulo,
+                subtitulo="Al guardar o cancelar volves a la lista, donde la dejaste.",
             ),
-            tarjeta(
-                contenedor_lineas_pedido,
-                agregar_linea_button,
-                titulo="Lineas",
-            ),
+            tarjeta(contenedor_lineas_pedido, agregar_linea_button, titulo="Lineas"),
             tarjeta(
                 ya_en_mano_switch,
                 ft.Row([remito_field, recepcion_observacion_field]),
                 recepcion_a_credito_switch,
             ),
-            ft.Row([guardar_form_button, cancelar_form_button]),
+            botones_formulario(guardar_form_texto, guardar_formulario, lambda: ir_a_lista()),
         ],
         visible=False,
-        scroll=ft.ScrollMode.AUTO,
         spacing=ESPACIO_PANTALLA,
     )
 
@@ -566,140 +599,24 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                 linea["costo_field"].value = str(item["costo_pactado"])
                 lineas_form.append(linea)
             refrescar_lineas_pedido()
-        seccion_lista.visible = False
-        seccion_formulario.visible = True
-        seccion_detalle.visible = False
-        page.update()
+        mostrar_seccion(seccion_formulario)
 
-    # ================= SECCION DETALLE =================
-    detalle_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
-    detalle_info = ft.Text("")
-    tabla_items_oc = ft.DataTable(
-        columns=[ft.DataColumn(ft.Text(t)) for t in
-                 ["Producto / Descripcion", "Cant. pedida", "Costo pactado", "Cant. recibida", "Costo real (prom.)", ""]],
-        rows=[],
-    )
-    contenedor_recepciones = ft.Column([])
-
-    editar_oc_button = ft.ElevatedButton("Editar")
-    cancelar_oc_button = ft.ElevatedButton("Cancelar orden", bgcolor=COLOR_DANGER_WASH)
-    registrar_recepcion_button = ft.ElevatedButton("Registrar recepcion")
-    dar_por_recibida_button = ft.ElevatedButton("Dar por recibida")
-    volver_lista_button = ft.ElevatedButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
-
-    motivo_cancelacion_field = ft.TextField(label="Motivo de la cancelacion", visible=False, expand=True)
-    confirmar_cancelacion_button = ft.ElevatedButton("Confirmar cancelacion", visible=False)
-
-    motivo_cierre_field = ft.TextField(label="Motivo del cierre manual", visible=False, expand=True)
-    confirmar_cierre_button = ft.ElevatedButton("Confirmar cierre manual", visible=False)
-
+    # ================= RECEPCION (pantalla aparte) =================
+    recepcion_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     seccion_recepcion_numero_remito = ft.TextField(label="Numero de remito (opcional)", width=220)
     seccion_recepcion_observacion = ft.TextField(label="Observacion (opcional)", expand=True)
     seccion_recepcion_a_credito_switch = ft.Switch(label="Esta compra queda a credito (genera cargo en Cuentas Corrientes)")
     contenedor_pendientes_recepcion = ft.Column([])
     contenedor_lineas_extra = ft.Column([])
     agregar_extra_button = ft.TextButton("+ Agregar item extra (no pedido)", on_click=agregar_linea_extra)
-    confirmar_recepcion_button = ft.ElevatedButton("Confirmar recepcion")
-    seccion_recepcion = tarjeta(
-        contenedor_pendientes_recepcion,
-        ft.Text("Items extra (no pedidos):"),
-        contenedor_lineas_extra,
-        agregar_extra_button,
-        ft.Row([seccion_recepcion_numero_remito, seccion_recepcion_observacion]),
-        seccion_recepcion_a_credito_switch,
-        confirmar_recepcion_button,
-        titulo="Registrar recepcion",
-        subtitulo="Cantidad pendiente de recibir por linea (dejar en 0 lo que no llega ahora).",
-        visible=False,
-    )
+    confirmar_recepcion_texto = ft.Text("Confirmar recepcion")
     campos_pendientes: list[dict] = []
 
-    def refrescar_detalle() -> None:
-        oc = ordenes_compra_service.obtener_orden_compra(detalle_oc_id)
-        detalle_titulo.value = f"{oc['numero']} - {nombre_proveedor(oc['proveedor_id'])}"
-        detalle_info.value = (
-            ("Creada y recibida en el acto   |   " if oc["recibida_en_el_acto"] else "")
-            + f"Estado: {ESTADOS_LABEL.get(oc['estado'], oc['estado'])}   |   "
-            f"Fecha: {oc['fecha_creacion'][:10]}   |   "
-            f"F. estimada: {oc['fecha_estimada'] or '-'}   |   "
-            f"Neto: {formatear_precio(oc['neto_estimado'])}   |   "
-            f"IVA {formatear_porcentaje(oc['iva_porcentaje']).replace(',00', '') if oc['iva_porcentaje'] else '0'}%: "
-            f"{formatear_precio(oc['iva_estimado'])}   |   Total estimado: {formatear_precio(oc['total_estimado'])}"
-        )
-        if oc["observacion"]:
-            detalle_info.value += f"\nObservacion: {oc['observacion']}"
-
-        tabla_items_oc.rows = []
-        for item in oc["items"]:
-            nombre = item["descripcion_libre"] or f"{item['producto_codigo']} - {item['producto_nombre']}"
-            recibida_excede = item["cantidad_recibida"] > item["cantidad_pedida"]
-            tabla_items_oc.rows.append(
-                ft.DataRow(cells=[
-                    ft.DataCell(ft.Text(nombre)),
-                    ft.DataCell(ft.Text(formatear_cantidad(item["cantidad_pedida"]))),
-                    ft.DataCell(ft.Text(formatear_precio(item["costo_pactado"]))),
-                    ft.DataCell(ft.Text(
-                        formatear_cantidad(item["cantidad_recibida"]),
-                        color=COLOR_WARNING if recibida_excede else None,
-                        weight=ft.FontWeight.BOLD if recibida_excede else None,
-                    )),
-                    ft.DataCell(costo_real_texto(item)),
-                    ft.DataCell(ft.Text("")),
-                ])
-            )
-
-        recepciones = recepciones_service.listar_recepciones_de_orden(detalle_oc_id)
-        contenedor_recepciones.controls = []
-        for r in recepciones:
-            items_r = recepciones_service.listar_items_recepcion(r["id"])
-            tabla_items_r = ft.DataTable(
-                columns=[ft.DataColumn(ft.Text(t)) for t in
-                         ["Producto / Descripcion", "Cantidad", "Costo real", "Subtotal", ""]],
-                rows=[
-                    ft.DataRow(cells=[
-                        ft.DataCell(ft.Text(
-                            item["descripcion_libre"] or f"{item['producto_codigo']} - {item['producto_nombre']}"
-                        )),
-                        ft.DataCell(ft.Text(formatear_cantidad(item["cantidad_recibida"]))),
-                        ft.DataCell(ft.Text(formatear_precio(item["costo_unitario"]))),
-                        ft.DataCell(ft.Text(formatear_precio(item["subtotal"]))),
-                        ft.DataCell(
-                            ft.Text("No pedido", color=COLOR_WARNING, weight=ft.FontWeight.BOLD)
-                            if item["orden_compra_item_id"] is None
-                            else ft.Text("")
-                        ),
-                    ])
-                    for item in items_r
-                ],
-            )
-            contenedor_recepciones.controls.append(
-                ft.Container(
-                    content=ft.Column([
-                        ft.Text(
-                            f"{r['fecha'][:16]}   |   Remito: {r['numero_remito'] or '-'}"
-                            + (f"   |   {r['observacion']}" if r["observacion"] else "")
-                        ),
-                        con_scroll_horizontal(tabla_items_r),
-                    ]),
-                    padding=ft.Padding.symmetric(vertical=8),
-                )
-            )
-
-        editar_oc_button.visible = oc["estado"] == "pendiente" and not recepciones
-        cancelar_oc_button.visible = oc["estado"] in ("pendiente", "recibida_parcial")
-        registrar_recepcion_button.visible = oc["estado"] in ("pendiente", "recibida_parcial")
-        dar_por_recibida_button.visible = oc["estado"] == "recibida_parcial"
-
-        motivo_cancelacion_field.visible = False
-        confirmar_cancelacion_button.visible = False
-        motivo_cierre_field.visible = False
-        confirmar_cierre_button.visible = False
-        seccion_recepcion.visible = False
-
-        page.update()
-
-    def preparar_seccion_recepcion() -> None:
-        oc = ordenes_compra_service.obtener_orden_compra(detalle_oc_id)
+    def ir_a_recepcion(oc: dict) -> None:
+        nonlocal detalle_oc_id
+        detalle_oc_id = oc["id"]
+        oc = ordenes_compra_service.obtener_orden_compra(oc["id"])
+        recepcion_titulo.value = f"Registrar recepcion: {oc['numero']}"
         campos_pendientes.clear()
         filas_pendientes = []
         for item in oc["items"]:
@@ -714,17 +631,16 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                 "descripcion_libre": item["descripcion_libre"],
                 "cantidad_field": cantidad_field, "costo_field": costo_field,
             })
-            filas_pendientes.append(ft.Row([ft.Text(nombre, width=250), cantidad_field, costo_field]))
+            filas_pendientes.append(ft.Row([ft.Text(nombre, width=300), cantidad_field, costo_field]))
         contenedor_pendientes_recepcion.controls = filas_pendientes
         lineas_extra_recepcion.clear()
         refrescar_lineas_extra()
         seccion_recepcion_numero_remito.value = ""
         seccion_recepcion_observacion.value = ""
         seccion_recepcion_a_credito_switch.value = False
-        seccion_recepcion.visible = True
-        page.update()
+        mostrar_seccion(seccion_recepcion)
 
-    def confirmar_recepcion_click(e: ft.ControlEvent) -> None:
+    def confirmar_recepcion() -> None:
         try:
             items = []
             for campo in campos_pendientes:
@@ -745,98 +661,45 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
                 item_extra = construir_item_extra(linea)
                 if item_extra is not None:
                     items.append(item_extra)
-
             recepciones_service.confirmar_recepcion(
                 orden_compra_id=detalle_oc_id, items=items,
                 numero_remito=seccion_recepcion_numero_remito.value,
                 observacion=seccion_recepcion_observacion.value,
                 a_credito=seccion_recepcion_a_credito_switch.value,
             )
-            mostrar_mensaje(
-                "Recepcion registrada" + (" (a credito, se genero el cargo en Cuentas Corrientes)"
-                                           if seccion_recepcion_a_credito_switch.value else "")
-            )
-            refrescar_detalle()
-        except EXCEPCIONES_NEGOCIO as ex:
-            mostrar_mensaje(str(ex))
+        except ERRORES_PARA_AVISAR as ex:
+            avisar(page, str(ex), error=True)
+            return
+        a_credito = seccion_recepcion_a_credito_switch.value
+        ir_a_lista()
+        avisar(page, "Recepcion registrada" + (" (a credito: se genero el cargo en Cuentas Corrientes)" if a_credito else ""))
 
-    confirmar_recepcion_button.on_click = confirmar_recepcion_click
-    registrar_recepcion_button.on_click = lambda e: preparar_seccion_recepcion()
+    seccion_recepcion = ft.Column([
+        tarjeta(
+            contenedor_pendientes_recepcion,
+            titulo=recepcion_titulo,
+            subtitulo="Cantidad que llega ahora por linea (dejar en 0 lo que no llega). Al confirmar o cancelar volves a la lista.",
+        ),
+        tarjeta(contenedor_lineas_extra, agregar_extra_button, titulo="Items extra (no pedidos)"),
+        tarjeta(ft.Row([seccion_recepcion_numero_remito, seccion_recepcion_observacion]), seccion_recepcion_a_credito_switch),
+        botones_formulario(confirmar_recepcion_texto, confirmar_recepcion, lambda: ir_a_lista()),
+    ], visible=False, spacing=ESPACIO_PANTALLA)
 
-    def mostrar_cancelacion(e: ft.ControlEvent) -> None:
-        motivo_cancelacion_field.value = ""
-        motivo_cancelacion_field.visible = True
-        confirmar_cancelacion_button.visible = True
+    # ================= NAVEGACION =================
+    def mostrar_seccion(seccion: ft.Control) -> None:
+        for s in (seccion_lista, seccion_formulario, seccion_recepcion):
+            s.visible = s is seccion
         page.update()
 
-    def confirmar_cancelacion(e: ft.ControlEvent) -> None:
-        try:
-            ordenes_compra_service.cancelar_orden_compra(detalle_oc_id, motivo_cancelacion_field.value or "")
-            mostrar_mensaje("Orden de compra cancelada")
-            refrescar_detalle()
-        except EXCEPCIONES_NEGOCIO as ex:
-            mostrar_mensaje(str(ex))
-
-    cancelar_oc_button.on_click = mostrar_cancelacion
-    confirmar_cancelacion_button.on_click = confirmar_cancelacion
-
-    def mostrar_cierre_manual(e: ft.ControlEvent) -> None:
-        motivo_cierre_field.value = ""
-        motivo_cierre_field.visible = True
-        confirmar_cierre_button.visible = True
-        page.update()
-
-    def confirmar_cierre_manual(e: ft.ControlEvent) -> None:
-        try:
-            ordenes_compra_service.marcar_recibida_manualmente(detalle_oc_id, motivo_cierre_field.value or "")
-            mostrar_mensaje("Orden de compra dada por recibida")
-            refrescar_detalle()
-        except EXCEPCIONES_NEGOCIO as ex:
-            mostrar_mensaje(str(ex))
-
-    dar_por_recibida_button.on_click = mostrar_cierre_manual
-    confirmar_cierre_button.on_click = confirmar_cierre_manual
-    editar_oc_button.on_click = lambda e: ir_a_formulario(detalle_oc_id)
-
-    seccion_detalle = ft.Column(
-        [
-            tarjeta(
-                detalle_info,
-                ft.Row([editar_oc_button, registrar_recepcion_button, dar_por_recibida_button, cancelar_oc_button, volver_lista_button]),
-                ft.Row([motivo_cancelacion_field, confirmar_cancelacion_button]),
-                ft.Row([motivo_cierre_field, confirmar_cierre_button]),
-                titulo=detalle_titulo,
-            ),
-            seccion_recepcion,
-            tarjeta(con_scroll_horizontal(tabla_items_oc), titulo="Lineas pedidas"),
-            tarjeta(contenedor_recepciones, titulo="Historial de recepciones"),
-        ],
-        visible=False,
-        scroll=ft.ScrollMode.AUTO,
-        spacing=ESPACIO_PANTALLA,
-    )
-
-    def ir_a_lista(e: ft.ControlEvent | None) -> None:
-        seccion_lista.visible = True
-        seccion_formulario.visible = False
-        seccion_detalle.visible = False
+    def ir_a_lista() -> None:
+        mostrar_seccion(seccion_lista)
         refrescar_lista()
-        page.update()
-
-    def ir_a_detalle(oc_id: int) -> None:
-        nonlocal detalle_oc_id
-        detalle_oc_id = oc_id
-        seccion_lista.visible = False
-        seccion_formulario.visible = False
-        seccion_detalle.visible = True
-        refrescar_detalle()
-        page.update()
 
     refrescar_lista()
 
     return ft.Column(
         [encabezado_pantalla("Ordenes de Compra", "Lo que se le pide a cada proveedor y lo que va llegando (recepciones)."),
-         seccion_lista, seccion_formulario, seccion_detalle],
+         seccion_lista, seccion_formulario, seccion_recepcion],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
         spacing=ESPACIO_PANTALLA,

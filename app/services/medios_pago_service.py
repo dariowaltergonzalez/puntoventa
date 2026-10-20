@@ -49,6 +49,14 @@ def actualizar_medio_pago(medio_pago_id: int, nombre: str, es_cuenta_corriente: 
     return despues
 
 
+def cambiar_activo(medio_pago_id: int, activo: bool) -> dict:
+    """Activar / desactivar desde la lista. Un medio inactivo no se ofrece al cobrar ni al pagar."""
+    m = obtener_medio_pago(medio_pago_id)
+    if m is None:
+        raise MedioPagoNoEncontradoError(f"No existe el medio de pago {medio_pago_id}")
+    return actualizar_medio_pago(medio_pago_id, m["nombre"], m["es_cuenta_corriente"], activo)
+
+
 def obtener_medio_pago(medio_pago_id: int) -> dict | None:
     fila = medios_pago_repo.obtener_por_id(medio_pago_id)
     return _a_dict(fila) if fila is not None else None

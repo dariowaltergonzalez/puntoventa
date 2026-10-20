@@ -97,6 +97,15 @@ def actualizar_proveedor(
     return despues
 
 
+def cambiar_activo(proveedor_id: int, activo: bool) -> dict:
+    """Activar / desactivar desde la lista. Un proveedor inactivo no se ofrece en las compras."""
+    p = obtener_proveedor(proveedor_id)
+    if p is None:
+        raise ProveedorNoEncontradoError(f"No existe el proveedor {proveedor_id}")
+    return actualizar_proveedor(proveedor_id, p["nombre"], p["cuit"], p["contacto"], p["telefono"], p["email"],
+                                p["direccion"], p["observaciones"], activo)
+
+
 def obtener_proveedor(proveedor_id: int) -> dict | None:
     fila = proveedores_repo.obtener_por_id(proveedor_id)
     return _a_dict(fila) if fila is not None else None

@@ -56,6 +56,14 @@ def actualizar_lista(lista_id: int, nombre: str, porcentaje_general: Decimal | N
     return despues
 
 
+def cambiar_activo(lista_id: int, activo: bool) -> dict:
+    """Activar / desactivar desde la lista. Una lista inactiva no se ofrece para asignar a clientes."""
+    lista = obtener_lista(lista_id)
+    if lista is None:
+        raise ListaPrecioNoEncontradaError(f"No existe la lista de precios {lista_id}")
+    return actualizar_lista(lista_id, lista["nombre"], lista["porcentaje_general"], activo)
+
+
 def obtener_lista(lista_id: int) -> dict | None:
     fila = listas_precios_repo.obtener_por_id(lista_id)
     if fila is None:

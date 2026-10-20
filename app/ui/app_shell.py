@@ -129,5 +129,12 @@ def build_app(page: ft.Page) -> None:
 
     page.abrir_presupuesto_en_caja = abrir_presupuesto_en_caja
 
+    def abrir_cuenta_corriente(tipo: str, entidad_id: int) -> None:
+        # Clientes/Proveedores -> la cuenta corriente de ese cliente o proveedor, ya abierta.
+        page.cuenta_a_abrir = (tipo, entidad_id)
+        seleccionar(next(i for i, (_, factory) in enumerate(items_menu) if factory is CuentasCorrientesView))
+
+    page.abrir_cuenta_corriente = abrir_cuenta_corriente
+
     seleccionar(0)
     page.add(ft.Row([menu, content], expand=True, spacing=0))

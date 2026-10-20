@@ -22,9 +22,24 @@ from app.services.exceptions import (
 )
 from app.shared.money import formatear_precio
 from app.ui.campos import FILTRO_CUIT, FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
-from app.ui.listados import coincide_texto, con_scroll_horizontal
+from app.ui.listados import con_scroll_horizontal
 from app.ui.theme import COLOR_DANGER, COLOR_SUCCESS, COLOR_TEXT_SOFT, COLOR_WARNING
-from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
+from app.ui.componentes import (
+    ESPACIO_PANTALLA,
+    TONO_CURSO,
+    TONO_ESPERA,
+    TONO_OK,
+    Columna,
+    Lista,
+    accion_abrir,
+    barra,
+    campo_buscar,
+    encabezado_pantalla,
+    etiqueta_estado,
+    rotulo,
+    tabla_simple,
+    tarjeta,
+)
 
 EXCEPCIONES_NEGOCIO = (
     AnulacionInvalidaError, CargoNoEncontradoError, ChequeEstadoInvalidoError, ChequeNoEncontradoError,
@@ -64,44 +79,78 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
 
     # ================= SECCION LISTA =================
     tipo_dropdown = ft.Dropdown(
-        label="Cuenta", width=180, value="cliente",
+        label="Cuentas de", width=180, value="cliente", on_select=lambda e: filtrar(),
         options=[ft.dropdown.Option(key="cliente", text="Clientes"), ft.dropdown.Option(key="proveedor", text="Proveedores")],
     )
-    buscador_field = campo_buscar("Cliente o proveedor")
-    tabla_lista = ft.DataTable(
-        columns=[ft.DataColumn(ft.Text(t)) for t in ["Nombre", "Saldo", ""]],
-        rows=[],
+    saldo_filtro = ft.Dropdown(label="Saldo", width=170, value="", on_select=lambda e: filtrar(), options=[
+        ft.dropdown.Option(key="", text="Todos"), ft.dropdown.Option(key="debe", text="Con deuda"),
+        ft.dropdown.Option(key="al_dia", text="Al dia"), ft.dropdown.Option(key="a_favor", text="A favor"),
+    ])
+    buscador_field = campo_buscar("Nombre del cliente o proveedor", al_cambiar=lambda: filtrar())
+    totales_texto = ft.Text("", size=12.5, color=COLOR_TEXT_SOFT)
+    lista = Lista(
+        [Columna("Nombre", peso=4, orden="nombre"), Columna("Cargos abiertos", ancho=140, derecha=True, orden="abiertos"),
+         Columna("Saldo ($)", ancho=150, derecha=True, orden="saldo"), Columna("Estado", ancho=110),
+         Columna("Acciones", ancho=60, derecha=True)],
+        al_cambiar_pagina=lambda: refrescar_lista(), nombre="cuentas", con_hijos=True, orden_inicial=("saldo", True),
+        sin_datos="Ninguna cuenta coincide con los filtros.",
     )
 
-    def refrescar_lista(e: ft.ControlEvent | None = None) -> None:
+    def filtrar() -> None:
+        lista.ir_al_principio()
+        refrescar_lista()
+
+    def hijos(x: dict) -> ft.Control:
         tipo = tipo_dropdown.value
-        entidades = [
-            x for x in listar_entidades(tipo) if coincide_texto(nombre_entidad(tipo, x), buscador_field.value)
-        ]
-        filas = []
-        for x in entidades:
+        cargos = cc_service.listar_cargos(tipo, x["id"], solo_con_saldo=True)
+        pagos = [p for p in cc_service.listar_pagos(tipo, x["id"]) if not p["anulado_fecha"]][:5]
+        return ft.Row([
+            ft.Column([rotulo("Lo que queda por pagar"), tabla_simple(
+                ["Fecha", "Concepto", "Monto", "Falta"],
+                [[fecha_corta(c["fecha"]), c["observacion"] or c["origen"], formatear_precio(c["monto"]),
+                  formatear_precio(c["saldo_pendiente"])] for c in cargos],
+                derecha=[2, 3], vacio="Nada pendiente.")], spacing=6),
+            ft.Column([rotulo("Ultimos pagos"), tabla_simple(
+                ["Fecha", "Medio", "Monto"],
+                [[fecha_corta(p["fecha"]), p["medio_nombre"] or (f"Nota de credito {p['nota_credito_numero']}"
+                                                                  if p["nota_credito_numero"] else "-"),
+                  formatear_precio(p["monto"])] for p in pagos],
+                derecha=[2], vacio="Sin pagos.")], spacing=6),
+        ], spacing=28, vertical_alignment=ft.CrossAxisAlignment.START, wrap=True)
+
+    def refrescar_lista() -> None:
+        tipo = tipo_dropdown.value
+        texto = (buscador_field.value or "").strip().lower()
+        cuentas = []
+        for x in listar_entidades(tipo):
+            nombre = nombre_entidad(tipo, x)
+            if texto not in nombre.lower():
+                continue
             saldo = cc_service.calcular_saldo_total(tipo, x["id"])
-            filas.append(ft.DataRow(cells=[
-                ft.DataCell(ft.Text(nombre_entidad(tipo, x))),
-                ft.DataCell(ft.Text(
-                    formatear_precio(saldo) if saldo >= 0 else f"{formatear_precio(-saldo)} a favor",
-                    color=COLOR_DANGER if saldo > 0 else (COLOR_SUCCESS if saldo < 0 else None),
-                    weight=ft.FontWeight.BOLD if saldo > 0 else None,
-                )),
-                ft.DataCell(ft.IconButton(
-                    ft.Icons.VISIBILITY, tooltip="Ver cuenta", data=x["id"],
-                    on_click=lambda e, t=tipo: ir_a_detalle(t, e.control.data),
-                )),
-            ]))
-        tabla_lista.rows = filas
+            estado = "debe" if saldo > 0 else ("a_favor" if saldo < 0 else "al_dia")
+            if saldo_filtro.value and saldo_filtro.value != estado:
+                continue
+            abiertos = len(cc_service.listar_cargos(tipo, x["id"], solo_con_saldo=True))
+            cuentas.append({"id": x["id"], "nombre": nombre, "saldo": saldo, "estado": estado, "abiertos": abiertos})
+        total = sum((c["saldo"] for c in cuentas if c["saldo"] > 0), 0)
+        totales_texto.value = (f"{'Te deben' if tipo == 'cliente' else 'Les debes'}: $ {formatear_precio(total)} "
+                               f"en {sum(1 for c in cuentas if c['saldo'] > 0)} cuenta(s) de la lista")
+        etiquetas = {"debe": ("Debe" if tipo == "cliente" else "Se le debe", TONO_ESPERA),
+                     "al_dia": ("Al dia", TONO_OK), "a_favor": ("A favor", TONO_CURSO)}
+        lista.mostrar(cuentas, lambda c: [
+            c["nombre"], str(c["abiertos"]),
+            ft.Text(formatear_precio(c["saldo"]) if c["saldo"] >= 0 else f"{formatear_precio(-c['saldo'])} a favor",
+                    weight=ft.FontWeight.BOLD if c["saldo"] > 0 else None),
+            etiqueta_estado(*etiquetas[c["estado"]]),
+            accion_abrir(ft.Icons.ACCOUNT_BALANCE_WALLET, "Abrir la cuenta: cargos, pagos y cobros",
+                         lambda c=c: ir_a_detalle(tipo, c["id"])),
+        ], hijos=hijos)
         page.update()
 
-    tipo_dropdown.on_select = refrescar_lista
-    buscador_field.on_change = refrescar_lista
-
     seccion_lista = ft.Column([
-        ft.Row([tipo_dropdown, buscador_field], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        tarjeta(con_scroll_horizontal(tabla_lista)),
+        barra([buscador_field, tipo_dropdown, saldo_filtro]),
+        totales_texto,
+        lista.control,
     ], spacing=ESPACIO_PANTALLA)
 
     # ================= SECCION DETALLE =================
@@ -635,6 +684,10 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
         page.update()
 
     refrescar_lista()
+    cuenta_pedida = getattr(page, "cuenta_a_abrir", None)
+    if cuenta_pedida is not None:
+        page.cuenta_a_abrir = None
+        ir_a_detalle(*cuenta_pedida)
 
     return ft.Column(
         [encabezado_pantalla("Cuentas Corrientes", "Lo que deben los clientes y lo que el negocio les debe a los proveedores."),

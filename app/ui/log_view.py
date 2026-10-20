@@ -1,79 +1,53 @@
+from datetime import datetime
+
 import flet as ft
 
 from app.services import log_service
-from app.ui.listados import Paginador, con_scroll_horizontal
-from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
+from app.ui.componentes import ESPACIO_PANTALLA, Columna, Lista, barra, campo_buscar, encabezado_pantalla
+from app.ui.theme import COLOR_TEXT_SOFT
 
-ENTIDADES = [
-    "venta", "orden_compra", "producto", "cliente", "proveedor",
-    "lista_precio", "medio_pago", "categoria", "sistema",
-]
+ENTIDADES = {
+    "venta": "Ventas", "presupuesto": "Presupuestos", "preventa": "Pre-ventas", "orden_compra": "Compras",
+    "producto": "Productos", "categoria": "Categorias", "cliente": "Clientes", "proveedor": "Proveedores",
+    "lista_precio": "Listas de precios", "medio_pago": "Medios de pago", "cheque": "Cheques", "gasto": "Gastos",
+    "categoria_gasto": "Categorias de gasto", "negocio": "Datos del negocio", "sistema": "Sistema",
+}
 
 
 def LogView(page: ft.Page) -> ft.Control:
     entidad_dropdown = ft.Dropdown(
-        label="Filtrar por tipo",
-        options=[ft.dropdown.Option(key="", text="Todas")] + [ft.dropdown.Option(e) for e in ENTIDADES],
-        value="",
+        label="Tipo", width=220, value="", on_select=lambda e: filtrar(),
+        options=[ft.dropdown.Option(key="", text="Todos")] + [ft.dropdown.Option(key=k, text=v) for k, v in ENTIDADES.items()],
     )
-    buscador_field = campo_buscar("Texto de la descripcion")
-
-    tabla = ft.DataTable(
-        columns=[
-            ft.DataColumn(ft.Text("Fecha")),
-            ft.DataColumn(ft.Text("Tipo")),
-            ft.DataColumn(ft.Text("ID")),
-            ft.DataColumn(ft.Text("Descripcion")),
-        ],
-        rows=[],
+    buscador_field = campo_buscar("Texto de la descripcion", al_cambiar=lambda: filtrar())
+    lista = Lista(
+        [Columna("Fecha", ancho=140), Columna("Tipo", ancho=170), Columna("Que paso", peso=6)],
+        al_cambiar_pagina=lambda: refrescar(), nombre="registros", por_pagina=50,
+        sin_datos="Nada registrado con estos filtros.",
     )
 
-    paginador = Paginador(on_cambio=lambda: refrescar_tabla())
+    def filtrar() -> None:
+        lista.ir_al_principio()
+        refrescar()
 
-    def refrescar_tabla() -> None:
-        entidad = entidad_dropdown.value or None
+    def refrescar() -> None:
         resultado = log_service.listar_eventos_pagina(
-            pagina=paginador.pagina_actual, tamano_pagina=paginador.tamano_pagina,
-            entidad=entidad, texto=buscador_field.value or None,
+            pagina=lista.pagina, tamano_pagina=lista.por_pagina,
+            entidad=entidad_dropdown.value or None, texto=buscador_field.value or None,
         )
-        paginador.fijar_total(resultado["total"])
-        tabla.rows = [
-            ft.DataRow(
-                cells=[
-                    ft.DataCell(ft.Text(e["fecha"])),
-                    ft.DataCell(ft.Text(e["entidad"])),
-                    ft.DataCell(ft.Text(str(e["entidad_id"]) if e["entidad_id"] is not None else "-")),
-                    ft.DataCell(ft.Text(e["descripcion"])),
-                ]
-            )
-            for e in resultado["items"]
-        ]
+        lista.mostrar(resultado["items"], lambda e: [
+            ft.Text(datetime.fromisoformat(e["fecha"]).strftime("%d/%m/%Y %H:%M"), color=COLOR_TEXT_SOFT),
+            ENTIDADES.get(e["entidad"], e["entidad"]) + (f" #{e['entidad_id']}" if e["entidad_id"] is not None else ""),
+            ft.Text(e["descripcion"], selectable=True),
+        ], total=resultado["total"])
         page.update()
 
-    def filtrar(e: ft.ControlEvent) -> None:
-        refrescar_tabla()
-
-    entidad_dropdown.on_select = filtrar
-    buscador_field.on_change = filtrar
-
-    refrescar_tabla()
-
-    encabezado = ft.Column(
+    refrescar()
+    return ft.Column(
         [
-            encabezado_pantalla("Historial", "Todo lo que se dio de alta, se modifico o se anulo."),
-            ft.Row([entidad_dropdown, buscador_field], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            encabezado_pantalla("Historial", "Todo lo que se dio de alta, se modifico o se anulo, del mas nuevo al mas viejo."),
+            barra([buscador_field, entidad_dropdown]),
+            lista.control,
         ],
-        spacing=ESPACIO_PANTALLA,
+        expand=True, scroll=ft.ScrollMode.AUTO, spacing=ESPACIO_PANTALLA,
     )
-
-    zona_tabla = ft.Column(
-        [
-            con_scroll_horizontal(tabla),
-            paginador.controles,
-        ],
-        expand=True,
-        scroll=ft.ScrollMode.AUTO,
-        spacing=10,
-    )
-
-    return ft.Column([encabezado, tarjeta(zona_tabla, expand=True)], expand=True, spacing=ESPACIO_PANTALLA)

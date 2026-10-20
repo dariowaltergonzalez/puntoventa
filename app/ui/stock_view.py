@@ -2,129 +2,104 @@ import flet as ft
 
 from app.services import categorias_service, lotes_service, movimientos_service
 from app.shared.money import formatear_cantidad, formatear_precio
-from app.ui.listados import con_scroll_horizontal
+from app.ui.componentes import (
+    ESPACIO_PANTALLA,
+    TONO_ESPERA,
+    TONO_NO,
+    TONO_OK,
+    Columna,
+    Lista,
+    avisar,
+    barra,
+    boton_secundario,
+    campo_buscar,
+    encabezado_pantalla,
+    etiqueta_estado,
+    tabla_simple,
+)
 from app.ui.theme import COLOR_DANGER
-from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
+
+
+def _situacion(p: dict) -> str:
+    if p["stock_actual"] <= 0:
+        return "sin_stock"
+    if p["stock_minimo"] > 0 and p["stock_actual"] < p["stock_minimo"]:
+        return "bajo"
+    return "ok"
+
+
+ETIQUETAS = {"sin_stock": ("Sin stock", TONO_NO), "bajo": ("Bajo el minimo", TONO_ESPERA), "ok": ("OK", TONO_OK)}
 
 
 def StockView(page: ft.Page) -> ft.Control:
-    categoria_dropdown = ft.Dropdown(
-        label="Filtrar por categoria",
-        options=[ft.dropdown.Option(key="", text="Todas")],
-        value="",
-    )
-    buscador_field = campo_buscar("Nombre o codigo")
-
-    contenedor_filas = ft.Column([])
-
-    resultado_texto = ft.Text("")
-
-    def construir_fila_producto(p: dict) -> ft.ExpansionTile:
-        stock_bajo = p["stock_minimo"] > 0 and p["stock_actual"] < p["stock_minimo"]
-        color = COLOR_DANGER if stock_bajo else None
-        titulo = ft.Row([
-            ft.Container(ft.Text(p["codigo"], color=color), width=100),
-            ft.Container(ft.Text(p["nombre"], color=color), width=250),
-            ft.Container(ft.Text(p["unidad"], color=color), width=80),
-            ft.Container(
-                ft.Text(formatear_cantidad(p["stock_actual"]), color=color,
-                         weight=ft.FontWeight.BOLD if stock_bajo else None),
-                width=100,
-            ),
-            ft.Container(ft.Text(formatear_cantidad(p["stock_minimo"]), color=color), width=100),
-        ])
-        lotes = lotes_service.listar_lotes_producto(p["id"])
-        cantidad_sin_lote = p["stock_actual"] - sum(l["cantidad_restante"] for l in lotes)
-        filas_lotes = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(l["fecha"][:16])),
-                ft.DataCell(ft.Text(l["numero_oc"] or "-")),
-                ft.DataCell(ft.Text(l["numero_remito"] or "-")),
-                ft.DataCell(ft.Text(formatear_cantidad(l["cantidad_recibida"]))),
-                ft.DataCell(ft.Text(formatear_cantidad(l["cantidad_restante"]))),
-                ft.DataCell(ft.Text(formatear_precio(l["costo_unitario"]))),
-            ])
-            for l in lotes
-        ]
-        if cantidad_sin_lote > 0:
-            filas_lotes.append(
-                ft.DataRow(cells=[
-                    ft.DataCell(ft.Text("-")),
-                    ft.DataCell(ft.Text("-")),
-                    ft.DataCell(ft.Text("-")),
-                    ft.DataCell(ft.Text("-")),
-                    ft.DataCell(ft.Text(formatear_cantidad(cantidad_sin_lote), italic=True)),
-                    ft.DataCell(ft.Text("Stock sin lote (carga previa a este sistema)", italic=True)),
-                ])
-            )
-        tabla_lotes = ft.DataTable(
-            columns=[ft.DataColumn(ft.Text(t)) for t in
-                     ["Fecha recepcion", "OC", "Remito", "Cant. recibida", "Disponible", "Costo"]],
-            rows=filas_lotes,
-        )
-        return ft.ExpansionTile(
-            title=titulo,
-            controls=[con_scroll_horizontal(tabla_lotes)],
-            tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
-            affinity=ft.TileAffinity.LEADING,
-        )
-
-    def refrescar_categorias() -> None:
-        categoria_dropdown.options = [ft.dropdown.Option(key="", text="Todas")] + [
-            ft.dropdown.Option(key=str(c["id"]), text=c["nombre"])
-            for c in categorias_service.listar_categorias()
-        ]
-
-    def coincide_busqueda(producto: dict, texto: str) -> bool:
-        texto = texto.strip().lower()
-        if not texto:
-            return True
-        return texto in producto["nombre"].lower() or texto in producto["codigo"].lower()
-
-    def refrescar_tabla() -> None:
-        categoria_id = int(categoria_dropdown.value) if categoria_dropdown.value else None
-        productos = [
-            p
-            for p in movimientos_service.consultar_stock(categoria_id=categoria_id)
-            if coincide_busqueda(p, buscador_field.value or "")
-        ]
-        contenedor_filas.controls = [construir_fila_producto(p) for p in productos]
-        page.update()
-
-    def filtrar(e: ft.ControlEvent) -> None:
-        refrescar_tabla()
-
-    def recalcular(e: ft.ControlEvent) -> None:
-        diferencias = movimientos_service.recalcular_stock()
-        if diferencias:
-            resultado_texto.value = f"Se corrigieron {len(diferencias)} producto(s) con stock desactualizado."
-        else:
-            resultado_texto.value = "El stock ya estaba consistente, no se encontraron diferencias."
-        refrescar_tabla()
-        page.update()
-
-    refrescar_categorias()
-    refrescar_tabla()
-    categoria_dropdown.on_select = filtrar
-    buscador_field.on_change = filtrar
-
-    encabezado = ft.Row([
-        ft.Container(ft.Text("Codigo", weight=ft.FontWeight.BOLD), width=100),
-        ft.Container(ft.Text("Nombre", weight=ft.FontWeight.BOLD), width=250),
-        ft.Container(ft.Text("Unidad", weight=ft.FontWeight.BOLD), width=80),
-        ft.Container(ft.Text("Stock actual", weight=ft.FontWeight.BOLD), width=100),
-        ft.Container(ft.Text("Stock minimo", weight=ft.FontWeight.BOLD), width=100),
+    buscador_field = campo_buscar("Nombre o codigo", al_cambiar=lambda: filtrar())
+    categoria_dropdown = ft.Dropdown(label="Categoria", width=200, value="", on_select=lambda e: filtrar())
+    situacion_dropdown = ft.Dropdown(label="Situacion", width=190, value="", on_select=lambda e: filtrar(), options=[
+        ft.dropdown.Option(key="", text="Todos"), ft.dropdown.Option(key="faltantes", text="Para reponer"),
+        ft.dropdown.Option(key="ok", text="OK"),
     ])
+    lista = Lista(
+        [
+            Columna("Codigo", ancho=100, orden="codigo"), Columna("Nombre", peso=4, orden="nombre"),
+            Columna("Categoria", peso=2, orden="categoria"), Columna("Unidad", ancho=80),
+            Columna("Stock", ancho=100, derecha=True, orden="stock_actual"),
+            Columna("Stock minimo", ancho=110, derecha=True, orden="stock_minimo"), Columna("Situacion", ancho=130),
+        ],
+        al_cambiar_pagina=lambda: refrescar(), nombre="productos", con_hijos=True, orden_inicial=("nombre", False),
+        sin_datos="Ningun producto coincide con los filtros.",
+    )
 
+    def hijos(p: dict) -> ft.Control:
+        lotes = lotes_service.listar_lotes_producto(p["id"])
+        filas = [[l["fecha"][:10], l["numero_oc"], l["numero_remito"], formatear_cantidad(l["cantidad_recibida"]),
+                  formatear_cantidad(l["cantidad_restante"]), formatear_precio(l["costo_unitario"])] for l in lotes]
+        sin_lote = p["stock_actual"] - sum(l["cantidad_restante"] for l in lotes)
+        if sin_lote > 0:
+            filas.append(["-", None, None, None, formatear_cantidad(sin_lote), "Sin lote (carga previa)"])
+        return tabla_simple(["Ingreso", "OC", "Remito", "Entraron", "Quedan", "Costo"], filas,
+                            derecha=[3, 4, 5], vacio="Sin lotes: nunca entro mercaderia de este producto.")
+
+    def filtrar() -> None:
+        lista.ir_al_principio()
+        refrescar()
+
+    def refrescar() -> None:
+        categorias = {c["id"]: c["nombre"] for c in categorias_service.listar_categorias()}
+        texto = (buscador_field.value or "").strip().lower()
+        productos = []
+        for p in movimientos_service.consultar_stock(categoria_id=int(categoria_dropdown.value) if categoria_dropdown.value else None):
+            situacion = _situacion(p)
+            if texto not in f"{p['nombre']} {p['codigo']}".lower():
+                continue
+            if situacion_dropdown.value == "faltantes" and situacion == "ok":
+                continue
+            if situacion_dropdown.value == "ok" and situacion != "ok":
+                continue
+            productos.append(dict(p, categoria=categorias.get(p["categoria_id"], "?"), situacion=situacion))
+        lista.mostrar(productos, lambda p: [
+            ft.Text(p["codigo"], size=12.5, font_family="Consolas"), p["nombre"], p["categoria"], p["unidad"],
+            ft.Text(formatear_cantidad(p["stock_actual"]), weight=ft.FontWeight.BOLD if p["situacion"] != "ok" else None,
+                    color=COLOR_DANGER if p["situacion"] != "ok" else None),
+            formatear_cantidad(p["stock_minimo"]), etiqueta_estado(*ETIQUETAS[p["situacion"]]),
+        ], hijos=hijos)
+        page.update()
+
+    def recalcular() -> None:
+        diferencias = movimientos_service.recalcular_stock()
+        refrescar()
+        avisar(page, f"Se corrigieron {len(diferencias)} producto(s) con stock desactualizado." if diferencias
+               else "El stock ya estaba bien: no se encontraron diferencias.")
+
+    categoria_dropdown.options = [ft.dropdown.Option(key="", text="Todas")] + [
+        ft.dropdown.Option(key=str(c["id"]), text=c["nombre"]) for c in categorias_service.listar_categorias()
+    ]
+    refrescar()
     return ft.Column(
         [
             encabezado_pantalla("Stock", "Cuanto hay de cada producto. Abri una fila para ver sus lotes y su costo."),
-            ft.Row([categoria_dropdown, buscador_field, ft.ElevatedButton("Recalcular stock", on_click=recalcular)],
-                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            resultado_texto,
-            tarjeta(encabezado, contenedor_filas),
+            barra([buscador_field, categoria_dropdown, situacion_dropdown],
+                  [boton_secundario("Recalcular stock", ft.Icons.REFRESH, recalcular)]),
+            lista.control,
         ],
-        expand=True,
-        scroll=ft.ScrollMode.AUTO,
-        spacing=ESPACIO_PANTALLA,
+        expand=True, scroll=ft.ScrollMode.AUTO, spacing=ESPACIO_PANTALLA,
     )

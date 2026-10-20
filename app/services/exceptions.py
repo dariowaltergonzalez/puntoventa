@@ -1,134 +1,139 @@
-class CategoriaDuplicadaError(Exception):
+class ErrorDeNegocio(Exception):
+    """Base de todos los errores de reglas de negocio: la UI los muestra como aviso al usuario.
+    Cualquier otra excepcion es un error de programacion y no se esconde."""
+
+
+class CategoriaDuplicadaError(ErrorDeNegocio):
     pass
 
 
-class CategoriaNoEncontradaError(Exception):
+class CategoriaNoEncontradaError(ErrorDeNegocio):
     pass
 
 
-class CodigoDuplicadoError(Exception):
+class CodigoDuplicadoError(ErrorDeNegocio):
     pass
 
 
-class CodigoBarraDuplicadoError(Exception):
+class CodigoBarraDuplicadoError(ErrorDeNegocio):
     pass
 
 
-class ProductoNoEncontradoError(Exception):
+class ProductoNoEncontradoError(ErrorDeNegocio):
     pass
 
 
-class ProductoInactivoError(Exception):
+class ProductoInactivoError(ErrorDeNegocio):
     pass
 
 
-class ProductoSinPrecioError(Exception):
+class ProductoSinPrecioError(ErrorDeNegocio):
     pass
 
 
-class StockInsuficienteError(Exception):
+class StockInsuficienteError(ErrorDeNegocio):
     pass
 
 
-class ProveedorDuplicadoError(Exception):
+class ProveedorDuplicadoError(ErrorDeNegocio):
     pass
 
 
-class ProveedorNoEncontradoError(Exception):
+class ProveedorNoEncontradoError(ErrorDeNegocio):
     pass
 
 
-class LineasVaciasError(Exception):
+class LineasVaciasError(ErrorDeNegocio):
     pass
 
 
-class OrdenCompraNoEncontradaError(Exception):
+class OrdenCompraNoEncontradaError(ErrorDeNegocio):
     pass
 
 
-class OrdenCompraCanceladaError(Exception):
+class OrdenCompraCanceladaError(ErrorDeNegocio):
     pass
 
 
-class OrdenCompraNoEditableError(Exception):
+class OrdenCompraNoEditableError(ErrorDeNegocio):
     pass
 
 
-class ClienteDuplicadoError(Exception):
+class ClienteDuplicadoError(ErrorDeNegocio):
     pass
 
 
-class ClienteNoEncontradoError(Exception):
+class ClienteNoEncontradoError(ErrorDeNegocio):
     pass
 
 
-class ListaPrecioDuplicadaError(Exception):
+class ListaPrecioDuplicadaError(ErrorDeNegocio):
     pass
 
 
-class ListaPrecioNoEncontradaError(Exception):
+class ListaPrecioNoEncontradaError(ErrorDeNegocio):
     pass
 
 
-class CondicionIvaNoEncontradaError(Exception):
+class CondicionIvaNoEncontradaError(ErrorDeNegocio):
     pass
 
 
-class CargoNoEncontradoError(Exception):
+class CargoNoEncontradoError(ErrorDeNegocio):
     pass
 
 
-class MontoPagoInvalidoError(Exception):
+class MontoPagoInvalidoError(ErrorDeNegocio):
     pass
 
 
-class MedioPagoDuplicadoError(Exception):
+class MedioPagoDuplicadoError(ErrorDeNegocio):
     pass
 
 
-class MedioPagoNoEncontradoError(Exception):
+class MedioPagoNoEncontradoError(ErrorDeNegocio):
     pass
 
 
-class VentaNoEncontradaError(Exception):
+class VentaNoEncontradaError(ErrorDeNegocio):
     pass
 
 
-class ChequeNoEncontradoError(Exception):
+class ChequeNoEncontradoError(ErrorDeNegocio):
     pass
 
 
-class ChequeEstadoInvalidoError(Exception):
+class ChequeEstadoInvalidoError(ErrorDeNegocio):
     pass
 
 
-class AnulacionInvalidaError(Exception):
+class AnulacionInvalidaError(ErrorDeNegocio):
     pass
 
 
-class NegocioNoConfiguradoError(Exception):
+class NegocioNoConfiguradoError(ErrorDeNegocio):
     pass
 
 
-class CorreoNoConfiguradoError(Exception):
+class CorreoNoConfiguradoError(ErrorDeNegocio):
     pass
 
 
-class EnvioCorreoError(Exception):
+class EnvioCorreoError(ErrorDeNegocio):
     pass
 
 
-class NotaCreditoInvalidaError(Exception):
+class NotaCreditoInvalidaError(ErrorDeNegocio):
     pass
 
 
-class PreventaNoDisponibleError(Exception):
+class PreventaNoDisponibleError(ErrorDeNegocio):
     pass
 
 
-class PresupuestoNoDisponibleError(Exception):
+class PresupuestoNoDisponibleError(ErrorDeNegocio):
     pass
 
 
-class GastoNoEncontradoError(Exception):
+class GastoNoEncontradoError(ErrorDeNegocio):
     pass

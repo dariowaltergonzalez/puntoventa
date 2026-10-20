@@ -158,6 +158,19 @@ def actualizar_producto(
     return despues
 
 
+def cambiar_activo(producto_id: int, activo: bool) -> dict:
+    """Activar / desactivar desde la lista, sin pasar por el formulario. Un producto inactivo
+    no se ofrece en la caja ni en las compras, pero conserva su historia."""
+    producto = obtener_producto(producto_id)
+    if producto is None:
+        raise ProductoNoEncontradoError(f"No existe el producto {producto_id}")
+    return actualizar_producto(
+        producto_id, producto["codigo"], producto["nombre"], producto["categoria_id"], producto["unidad"],
+        producto["precio_costo"], producto["precio_venta"], producto["stock_minimo"], activo,
+        producto["marca"], producto["descripcion"], producto["codigo_barra"], producto["proveedor_id"],
+    )
+
+
 def obtener_producto(producto_id: int) -> dict | None:
     fila = productos_repo.obtener_por_id(producto_id)
     return _a_dict(fila) if fila is not None else None
@@ -175,10 +188,11 @@ def listar_productos(solo_activos: bool = False, categoria_id: int | None = None
 def listar_productos_pagina(
     pagina: int, tamano_pagina: int, texto: str | None = None,
     solo_activos: bool = False, categoria_id: int | None = None,
+    orden: str = "nombre", descendente: bool = False,
 ) -> dict:
     """Para catalogos grandes: trae solo la pagina pedida en vez de todos los productos.
     Devuelve {'items': [...], 'total': N} -- 'total' es el total de registros que matchean
     el filtro (sin paginar), lo que necesita el Paginador de la UI para saber cuantas
     paginas hay en total."""
-    filas, total = productos_repo.listar_pagina(pagina, tamano_pagina, texto, solo_activos, categoria_id)
+    filas, total = productos_repo.listar_pagina(pagina, tamano_pagina, texto, solo_activos, categoria_id, orden, descendente)
     return {"items": [_a_dict(fila) for fila in filas], "total": total}

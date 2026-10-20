@@ -1,6 +1,6 @@
-"""Utilidades reutilizables para pantallas de listado (grilla + filtros + paginacion).
-Cualquier pantalla nueva con una lista de registros (Ordenes de Compra, Clientes, Ventas,
-etc.) usa esto en vez de reescribir su propia logica de filtrado/paginacion."""
+"""Restos del armado viejo de listas: con_scroll_horizontal (tablas anchas) y el Paginador que
+todavia usa el historial de la caja. Las pantallas de lista nuevas usan componentes.Lista
+(ver docs/estandar_pantallas.md)."""
 
 from typing import Callable
 
@@ -16,41 +16,6 @@ def con_scroll_horizontal(tabla: ft.Control) -> ft.Row:
     asi. scroll=ALWAYS en vez de AUTO para que la barra se vea siempre, no solo al pasar
     el mouse -- es la pista de que se puede desplazar."""
     return ft.Row([tabla], scroll=ft.ScrollMode.ALWAYS)
-
-
-# ================= Filtros genericos (funcionan para cualquier entidad) =================
-
-def coincide_texto(valor: str | None, busqueda: str | None) -> bool:
-    """True si no hay busqueda cargada, o si 'busqueda' aparece (sin importar mayus/minus)
-    dentro de 'valor'. Sirve para cualquier campo de texto libre (nombre, proveedor, etc.)."""
-    busqueda = (busqueda or "").strip().lower()
-    if not busqueda:
-        return True
-    return busqueda in (valor or "").lower()
-
-
-def coincide_exacto(valor, filtro) -> bool:
-    """True si 'filtro' esta vacio (None o ""), o si valor == filtro. Sirve para dropdowns
-    de seleccion exacta (estado, categoria_id, etc.)."""
-    if filtro in (None, ""):
-        return True
-    return valor == filtro
-
-
-def coincide_rango_fecha(fecha: str, desde: str | None, hasta: str | None) -> bool:
-    """Compara strings ISO (funciona por orden lexicografico). 'desde'/'hasta' vacios = sin tope."""
-    if desde and fecha < desde:
-        return False
-    if hasta and fecha > hasta:
-        return False
-    return True
-
-
-def filtrar(items: list[dict], predicados: list[Callable[[dict], bool]]) -> list[dict]:
-    """Devuelve los items que cumplen TODOS los predicados. Cada predicado es una funcion
-    item(dict) -> bool. Cada pantalla arma su propia lista de predicados segun sus filtros,
-    esta funcion no sabe nada del modelo particular."""
-    return [item for item in items if all(p(item) for p in predicados)]
 
 
 # ================= Paginacion (controles + estado, reutilizable) =================

@@ -70,9 +70,9 @@ Peculiaridades de esta versión de Flet que ya nos mordieron — no asumir que l
   - Lo mismo en horizontal: un control con `expand=True` dentro de un `ft.Row(wrap=True)` recibe ancho "infinito" y todo lo que sigue se pinta como un **bloque gris** (pasó con el buscador de Gastos). En filas con `wrap=True`, ancho fijo (`width=`), nunca `expand`.
 
 Patrones de este proyecto (no son limitaciones de Flet, son decisiones de estilo):
-- **Todas las pantallas con la misma forma**, armadas con `app/ui/componentes.py`: `encabezado_pantalla(titulo, subtitulo)`, el formulario dentro de una `tarjeta(..., titulo=...)`, los filtros sueltos sobre el fondo (`campo_buscar(...)` para el buscador), y la lista dentro de otra `tarjeta` (con `expand=True` si la lista tiene scroll propio). No armar recuadros a mano ni títulos con otro tamaño. La altura de los campos la da el tema (`visual_density=COMPACT` en `theme.py`): no usar `dense=True` en formularios.
-- No se usan `AlertDialog` ni navegación modal. Las pantallas con múltiples secciones (lista/formulario/detalle) son `Column`s que togglean `.visible`.
-- Filas expandibles con detalle inline: `ft.ExpansionTile`, no una pantalla aparte.
+- **Antes de crear o tocar una pantalla, leer [docs/estandar_pantallas.md](docs/estandar_pantallas.md)** y seguirlo al pie de la letra: forma de la pantalla (encabezado → barra de filtros y acciones → lista → paginado), filtros, etiquetas de estado, filas desplegables, los 5 tipos de acción, diccionario de íconos, formularios y modales. Una pantalla nueva no inventa nada; si falta algo, primero se define en ese documento y se agrega la pieza a `app/ui/componentes.py`.
+- Todo se arma con las piezas de `app/ui/componentes.py` (`encabezado_pantalla`, `tarjeta`, `campo_buscar`, ...): no armar recuadros a mano ni títulos con otro tamaño. La altura de los campos la da el tema (`visual_density=COMPACT` en `theme.py`): no usar `dense=True` en formularios.
+- Ventana modal (`AlertDialog`) **solo** para ver info (tipo 2) y anular con motivo (tipo 4). El formulario de alta/edición es una sección aparte de la misma pantalla (`Column`s que togglean `.visible`), nunca un modal.
 - Estado editable de una pantalla: closures + `nonlocal` (no hay manejo de estado global ni clases).
 - Ninguna pantalla contiene SQL ni lógica de negocio — solo arma controles y llama a servicios.
 

@@ -1,414 +1,302 @@
-from datetime import datetime
+from datetime import date, datetime
 
 import flet as ft
 
 from app.services import cheques_service, clientes_service, proveedores_service
-from app.services.exceptions import (
-    CargoNoEncontradoError,
-    ChequeEstadoInvalidoError,
-    ChequeNoEncontradoError,
-    ClienteNoEncontradoError,
-    MontoPagoInvalidoError,
-    ProveedorNoEncontradoError,
-)
 from app.shared.money import formatear_precio
 from app.ui.campos import FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
-from app.ui.listados import Paginador, coincide_texto, coincide_exacto, con_scroll_horizontal, filtrar
-from app.ui.theme import COLOR_DANGER, COLOR_SUCCESS, COLOR_TEXT_SOFT, COLOR_WARNING
-from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
-
-EXCEPCIONES_NEGOCIO = (
-    CargoNoEncontradoError, ChequeEstadoInvalidoError, ChequeNoEncontradoError,
-    ClienteNoEncontradoError, MontoPagoInvalidoError, ProveedorNoEncontradoError, ValueError,
+from app.ui.componentes import (
+    ESPACIO_PANTALLA,
+    ERRORES_PARA_AVISAR,
+    TONO_ESPERA,
+    TONO_NO,
+    TONO_OK,
+    Columna,
+    Lista,
+    accion_abrir,
+    accion_anular,
+    accion_con_motivo,
+    accion_ver,
+    avisar,
+    barra,
+    boton_principal,
+    botones_formulario,
+    campo_buscar,
+    dato,
+    encabezado_pantalla,
+    etiqueta_estado,
+    tarjeta,
+    ventana_info,
 )
+from app.ui.theme import COLOR_TEXT_SOFT
 
-ESTADO_LABEL = {
-    "en_cartera": "En cartera",
-    "entregado_proveedor": "Entregado a proveedor",
-    "baja": "Baja",
-    "rechazado": "Rechazado",
-}
-ESTADO_COLOR = {
-    "en_cartera": COLOR_SUCCESS,
-    "entregado_proveedor": COLOR_TEXT_SOFT,
-    "baja": COLOR_TEXT_SOFT,
-    "rechazado": COLOR_DANGER,
+ESTADOS = {
+    "en_cartera": ("En cartera", TONO_ESPERA),
+    "entregado_proveedor": ("Entregado a proveedor", TONO_OK),
+    "baja": ("Baja", TONO_OK),
+    "rechazado": ("Rechazado", TONO_NO),
 }
 ORIGEN_LABEL = {"recibido_cliente": "Recibido de cliente", "propio": "Propio"}
 
 
-def ChequesView(page: ft.Page) -> ft.Control:
-    def mostrar_mensaje(texto: str) -> None:
-        page.show_dialog(ft.SnackBar(ft.Text(texto)))
+def _fecha(iso: str | None) -> str:
+    return date.fromisoformat(iso[:10]).strftime("%d/%m/%Y") if iso else "-"
 
+
+def ChequesView(page: ft.Page) -> ft.Control:
     def fecha_hoy() -> str:
         return datetime.now().strftime("%Y-%m-%d")
 
-    def nombre_cliente(cliente_id: int | None) -> str:
-        if cliente_id is None:
-            return "-"
-        c = clientes_service.obtener_cliente(cliente_id)
-        return c["razon_social"] if c else f"Cliente {cliente_id}"
-
-    def nombre_proveedor(proveedor_id: int | None) -> str:
-        if proveedor_id is None:
-            return "-"
-        p = proveedores_service.obtener_proveedor(proveedor_id)
-        return p["nombre"] if p else f"Proveedor {proveedor_id}"
-
-    # ================= FILTROS + CONTADORES =================
-    estado_dropdown = ft.Dropdown(
-        label="Estado", width=200, value="",
-        options=[ft.dropdown.Option(key="", text="Todos")] + [
-            ft.dropdown.Option(key=k, text=v) for k, v in ESTADO_LABEL.items()
+    # ================= Lista =================
+    buscador_field = campo_buscar("Banco, librador o numero", al_cambiar=lambda: filtrar())
+    estado_dropdown = ft.Dropdown(label="Estado", width=210, value="", on_select=lambda e: filtrar(), options=[
+        ft.dropdown.Option(key="", text="Todos"), *[ft.dropdown.Option(key=k, text=v[0]) for k, v in ESTADOS.items()]])
+    origen_dropdown = ft.Dropdown(label="Origen", width=190, value="", on_select=lambda e: filtrar(), options=[
+        ft.dropdown.Option(key="", text="Todos"), *[ft.dropdown.Option(key=k, text=v) for k, v in ORIGEN_LABEL.items()]])
+    contadores_texto = ft.Text("", size=12.5, color=COLOR_TEXT_SOFT)
+    lista = Lista(
+        [
+            Columna("Banco", peso=2, orden="banco"), Columna("Librador", peso=2, orden="librador"),
+            Columna("Numero", ancho=110), Columna("Cliente / proveedor", peso=3, orden="entidad"),
+            Columna("Monto ($)", ancho=120, derecha=True, orden="monto"), Columna("Fecha de pago", ancho=120, orden="fecha_pago"),
+            Columna("Estado", ancho=170), Columna("Acciones", ancho=170, derecha=True),
         ],
+        al_cambiar_pagina=lambda: refrescar(), nombre="cheques", orden_inicial=("fecha_pago", False),
+        sin_datos="Ningun cheque coincide con los filtros.",
     )
-    origen_dropdown = ft.Dropdown(
-        label="Origen", width=200, value="",
-        options=[ft.dropdown.Option(key="", text="Todos")] + [
-            ft.dropdown.Option(key=k, text=v) for k, v in ORIGEN_LABEL.items()
-        ],
-    )
-    buscador_field = campo_buscar("Banco, librador o numero")
 
-    contadores_texto = ft.Text("", size=13, color=COLOR_TEXT_SOFT)
+    def filtrar() -> None:
+        lista.ir_al_principio()
+        refrescar()
 
-    nuevo_recibido_button = ft.ElevatedButton("+ Cheque recibido")
-    nuevo_propio_button = ft.ElevatedButton("+ Cheque propio")
+    def refrescar() -> None:
+        clientes = {c["id"]: c["razon_social"] for c in clientes_service.listar_clientes()}
+        proveedores = {p["id"]: p["nombre"] for p in proveedores_service.listar_proveedores()}
+        todos = []
+        for c in cheques_service.listar_cheques():
+            partes = ([f"De {clientes.get(c['cliente_id'], '?')}"] if c["cliente_id"] else []) + \
+                     ([f"A {proveedores.get(c['proveedor_id'], '?')}"] if c["proveedor_id"] else [])
+            todos.append(dict(c, entidad=" · ".join(partes) or None))
+        en_cartera = [c for c in todos if c["estado"] == "en_cartera"]
+        contadores_texto.value = (
+            f"En cartera: {len(en_cartera)} (${formatear_precio(sum((c['monto'] for c in en_cartera), 0))})   ·   "
+            + "   ·   ".join(f"{v[0]}: {sum(1 for c in todos if c['estado'] == k)}" for k, v in ESTADOS.items() if k != "en_cartera")
+        )
+        texto = (buscador_field.value or "").strip().lower()
+        filtrados = [
+            c for c in todos
+            if texto in f"{c['banco']} {c['librador']} {c['numero'] or ''}".lower()
+            and (not estado_dropdown.value or c["estado"] == estado_dropdown.value)
+            and (not origen_dropdown.value or c["origen_tipo"] == origen_dropdown.value)
+        ]
+        lista.mostrar(filtrados, celdas, valor_orden=lambda c, k: c.get(k))
+        page.update()
 
-    contenedor_filas = ft.Column([], spacing=8)
-    paginador = Paginador(on_cambio=lambda: refrescar_lista())
+    def celdas(c: dict) -> list:
+        estado, propio = c["estado"], c["origen_tipo"] == "propio"
+        en_cartera = estado == "en_cartera"
+        if propio:
+            rechazable = None if estado == "entregado_proveedor" else f"esta {ESTADOS[estado][0].lower()}"
+        else:
+            rechazable = None if en_cartera else "solo un cheque en cartera se puede marcar rechazado"
+        quien = "del proveedor (el negocio le vuelve a deber)" if propio else "del cliente (vuelve a deber ese monto)"
+        return [
+            ft.Text(c["banco"], weight=ft.FontWeight.W_500), c["librador"], c["numero"], c["entidad"],
+            formatear_precio(c["monto"]), _fecha(c["fecha_pago"]), etiqueta_estado(*ESTADOS[estado]),
+            ft.Row([
+                accion_ver(ft.Icons.VISIBILITY, "Ver datos del cheque", lambda c=c: ver_cheque(c)),
+                accion_abrir(ft.Icons.SEND, "Entregar a un proveedor", lambda c=c: ir_a_entregar(c),
+                             por_que_no=None if en_cartera else f"esta {ESTADOS[estado][0].lower()}"),
+                accion_con_motivo(
+                    ft.Icons.ARCHIVE, "Dar de baja", "Dar de baja el cheque",
+                    f"Sale de la cartera ({c['banco']}, ${formatear_precio(c['monto'])}): depositado, cobrado u otra "
+                    "salida que no sea entregarlo a un proveedor.",
+                    lambda motivo, c=c: dar_de_baja(c, motivo),
+                    por_que_no=None if en_cartera else f"esta {ESTADOS[estado][0].lower()}",
+                ),
+                accion_anular(
+                    "Marcar rechazado", "Marcar el cheque como rechazado",
+                    f"Reboto o ya no sirve para cobrar. Se genera un cargo nuevo de ${formatear_precio(c['monto'])} "
+                    f"en la cuenta corriente {quien}.",
+                    lambda motivo, c=c: rechazar(c, motivo), por_que_no=rechazable,
+                ),
+            ], spacing=0, tight=True),
+        ]
 
-    # ================= FORMULARIO: cheque recibido de un cliente (entrada suelta, saldar CC) =================
-    cliente_dropdown = ft.Dropdown(label="Cliente", width=280, options=[])
-    recibido_banco_field = ft.TextField(label="Banco", width=220)
-    recibido_librador_field = ft.TextField(label="Librador", width=220)
-    recibido_cuit_field = ft.TextField(label="CUIT del librador (opcional)", width=180)
+    def ver_cheque(c: dict) -> None:
+        ventana_info(
+            page, f"Cheque {c['banco']} · ${formatear_precio(c['monto'])}",
+            dato("Estado", ESTADOS[c["estado"]][0]),
+            dato("Origen", ORIGEN_LABEL.get(c["origen_tipo"], c["origen_tipo"])),
+            dato("Cliente / proveedor", c["entidad"] or "-"),
+            dato("Librador", c["librador"] + (f" (CUIT {c['cuit_librador']})" if c["cuit_librador"] else "")),
+            dato("Numero", c["numero"] or "-"),
+            dato("Fecha de pago", _fecha(c["fecha_pago"])),
+            dato("Recibido el", _fecha(c["fecha_recepcion"])),
+            dato("Observacion", c["observacion"] or "-"),
+        )
+
+    def dar_de_baja(c: dict, motivo: str) -> str:
+        cheques_service.dar_de_baja(c["id"], motivo)
+        refrescar()
+        return f"Cheque {c['banco']} (${formatear_precio(c['monto'])}) dado de baja"
+
+    def rechazar(c: dict, motivo: str) -> str:
+        cheques_service.marcar_rechazado(c["id"], motivo)
+        refrescar()
+        return f"Cheque rechazado: se genero un cargo de ${formatear_precio(c['monto'])} en la cuenta corriente"
+
+    seccion_lista = ft.Column([
+        barra(
+            [buscador_field, estado_dropdown, origen_dropdown],
+            [boton_principal("Cheque recibido", ft.Icons.ADD, lambda: abrir_form(seccion_form_recibido)),
+             boton_principal("Cheque propio", ft.Icons.ADD, lambda: abrir_form(seccion_form_propio))],
+        ),
+        contadores_texto,
+        lista.control,
+    ], spacing=ESPACIO_PANTALLA)
+
+    # ================= Formulario: cheque recibido de un cliente =================
+    cliente_dropdown = ft.Dropdown(label="Cliente *", width=280, options=[])
+    recibido_banco_field = ft.TextField(label="Banco *", width=220)
+    recibido_librador_field = ft.TextField(label="Librador *", width=220)
+    recibido_cuit_field = ft.TextField(label="CUIT del librador (opcional)", width=200)
     recibido_numero_field = ft.TextField(label="Numero (opcional)", width=160)
-    recibido_monto_field = ft.TextField(label="Monto", width=160, input_filter=FILTRO_DECIMALES)
+    recibido_monto_field = ft.TextField(label="Monto *", width=160, input_filter=FILTRO_DECIMALES)
     aplicar_mascara_moneda(recibido_monto_field)
-    recibido_fecha_field = ft.TextField(label="Fecha de pago (AAAA-MM-DD)", width=200, value=fecha_hoy())
+    recibido_fecha_field = ft.TextField(label="Fecha de pago * (AAAA-MM-DD)", width=220)
     recibido_observacion_field = ft.TextField(label="Observacion (opcional)", expand=True)
-    guardar_recibido_button = ft.ElevatedButton("Guardar")
-    cancelar_recibido_button = ft.TextButton("Cancelar")
 
-    def limpiar_form_recibido() -> None:
-        cliente_dropdown.value = None
-        recibido_banco_field.value = ""
-        recibido_librador_field.value = ""
-        recibido_cuit_field.value = ""
-        recibido_numero_field.value = ""
-        recibido_monto_field.value = ""
-        recibido_fecha_field.value = fecha_hoy()
-        recibido_observacion_field.value = ""
-
-    def guardar_recibido_click(e: ft.ControlEvent) -> None:
+    def guardar_recibido() -> None:
         try:
             if not cliente_dropdown.value:
                 raise ValueError("Elegi un cliente")
             monto = parsear_decimal_ar_opcional(recibido_monto_field.value, "El monto")
             if monto is None:
                 raise ValueError("El monto es obligatorio")
-            fecha_pago = (recibido_fecha_field.value or "").strip()
             cheques_service.recibir_de_cliente_para_cc(
-                cliente_id=int(cliente_dropdown.value),
-                banco=recibido_banco_field.value or "",
-                librador=recibido_librador_field.value or "",
-                monto=monto,
-                fecha_pago=fecha_pago,
-                numero=recibido_numero_field.value,
-                cuit_librador=recibido_cuit_field.value,
-                observacion=recibido_observacion_field.value,
+                cliente_id=int(cliente_dropdown.value), banco=recibido_banco_field.value or "",
+                librador=recibido_librador_field.value or "", monto=monto,
+                fecha_pago=(recibido_fecha_field.value or "").strip(), numero=recibido_numero_field.value,
+                cuit_librador=recibido_cuit_field.value, observacion=recibido_observacion_field.value,
             )
-            mostrar_mensaje("Cheque recibido y aplicado a la cuenta corriente del cliente")
-            limpiar_form_recibido()
-            mostrar_lista()
-        except EXCEPCIONES_NEGOCIO as ex:
-            mostrar_mensaje(str(ex))
+        except ERRORES_PARA_AVISAR as ex:
+            avisar(page, str(ex), error=True)
+            return
+        mostrar_lista()
+        avisar(page, "Cheque recibido y aplicado a la cuenta corriente del cliente")
 
-    guardar_recibido_button.on_click = guardar_recibido_click
-    cancelar_recibido_button.on_click = lambda e: mostrar_lista()
+    seccion_form_recibido = ft.Column([tarjeta(
+        ft.Row([cliente_dropdown]),
+        ft.Row([recibido_banco_field, recibido_librador_field, recibido_cuit_field, recibido_numero_field]),
+        ft.Row([recibido_monto_field, recibido_fecha_field]),
+        ft.Row([recibido_observacion_field]),
+        botones_formulario(ft.Text("Guardar cheque"), guardar_recibido, lambda: mostrar_lista()),
+        titulo="Nuevo cheque recibido (para saldar una cuenta corriente vieja)",
+        subtitulo="Se aplica a los cargos abiertos mas viejos de ese cliente. Un cheque que paga una venta nueva "
+                  "se carga directamente al cobrar en Ventas.",
+    )], visible=False)
 
-    seccion_form_recibido = ft.Column(
-        [tarjeta(
-            ft.Text("Nuevo cheque recibido (para saldar una cuenta corriente vieja)", size=15, weight=ft.FontWeight.BOLD),
-            ft.Text(
-                "Se aplica automaticamente a los cargos abiertos mas viejos de ese cliente (igual "
-                "que cualquier pago de cuenta corriente). Para un cheque que paga una venta nueva, "
-                "se carga directamente desde el cobro en Ventas.",
-                size=11.5, color=COLOR_TEXT_SOFT,
-            ),
-            ft.Row([cliente_dropdown]),
-            ft.Row([recibido_banco_field, recibido_librador_field, recibido_cuit_field, recibido_numero_field]),
-            ft.Row([recibido_monto_field, recibido_fecha_field]),
-            ft.Row([recibido_observacion_field]),
-            ft.Row([guardar_recibido_button, cancelar_recibido_button]),
-        )],
-        visible=False, scroll=ft.ScrollMode.AUTO,
-    )
-
-    # ================= FORMULARIO: cheque propio (nace entregado a un proveedor) =================
-    propio_proveedor_dropdown = ft.Dropdown(label="Proveedor", width=280, options=[])
-    propio_banco_field = ft.TextField(label="Banco", width=220)
-    propio_librador_field = ft.TextField(label="Librador", width=220, value="Negocio propio")
-    propio_cuit_field = ft.TextField(label="CUIT del librador (opcional)", width=180)
+    # ================= Formulario: cheque propio (nace entregado a un proveedor) =================
+    propio_proveedor_dropdown = ft.Dropdown(label="Proveedor *", width=280, options=[])
+    propio_banco_field = ft.TextField(label="Banco *", width=220)
+    propio_librador_field = ft.TextField(label="Librador *", width=220)
+    propio_cuit_field = ft.TextField(label="CUIT del librador (opcional)", width=200)
     propio_numero_field = ft.TextField(label="Numero (opcional)", width=160)
-    propio_monto_field = ft.TextField(label="Monto", width=160, input_filter=FILTRO_DECIMALES)
+    propio_monto_field = ft.TextField(label="Monto *", width=160, input_filter=FILTRO_DECIMALES)
     aplicar_mascara_moneda(propio_monto_field)
-    propio_fecha_field = ft.TextField(label="Fecha de pago (AAAA-MM-DD)", width=200, value=fecha_hoy())
+    propio_fecha_field = ft.TextField(label="Fecha de pago * (AAAA-MM-DD)", width=220)
     propio_observacion_field = ft.TextField(label="Observacion (opcional)", expand=True)
-    guardar_propio_button = ft.ElevatedButton("Guardar")
-    cancelar_propio_button = ft.TextButton("Cancelar")
 
-    def limpiar_form_propio() -> None:
-        propio_proveedor_dropdown.value = None
-        propio_banco_field.value = ""
-        propio_librador_field.value = "Negocio propio"
-        propio_cuit_field.value = ""
-        propio_numero_field.value = ""
-        propio_monto_field.value = ""
-        propio_fecha_field.value = fecha_hoy()
-        propio_observacion_field.value = ""
-
-    def guardar_propio_click(e: ft.ControlEvent) -> None:
+    def guardar_propio() -> None:
         try:
             if not propio_proveedor_dropdown.value:
                 raise ValueError("Elegi un proveedor")
             monto = parsear_decimal_ar_opcional(propio_monto_field.value, "El monto")
             if monto is None:
                 raise ValueError("El monto es obligatorio")
-            fecha_pago = (propio_fecha_field.value or "").strip()
             cheques_service.crear_cheque_propio_y_entregar(
-                proveedor_id=int(propio_proveedor_dropdown.value),
-                banco=propio_banco_field.value or "",
-                librador=propio_librador_field.value or "",
-                monto=monto,
-                fecha_pago=fecha_pago,
-                numero=propio_numero_field.value,
-                cuit_librador=propio_cuit_field.value,
-                observacion=propio_observacion_field.value,
+                proveedor_id=int(propio_proveedor_dropdown.value), banco=propio_banco_field.value or "",
+                librador=propio_librador_field.value or "", monto=monto,
+                fecha_pago=(propio_fecha_field.value or "").strip(), numero=propio_numero_field.value,
+                cuit_librador=propio_cuit_field.value, observacion=propio_observacion_field.value,
             )
-            mostrar_mensaje("Cheque propio emitido y aplicado a la cuenta corriente del proveedor")
-            limpiar_form_propio()
-            mostrar_lista()
-        except EXCEPCIONES_NEGOCIO as ex:
-            mostrar_mensaje(str(ex))
+        except ERRORES_PARA_AVISAR as ex:
+            avisar(page, str(ex), error=True)
+            return
+        mostrar_lista()
+        avisar(page, "Cheque propio emitido y aplicado a la cuenta corriente del proveedor")
 
-    guardar_propio_button.on_click = guardar_propio_click
-    cancelar_propio_button.on_click = lambda e: mostrar_lista()
+    seccion_form_propio = ft.Column([tarjeta(
+        ft.Row([propio_proveedor_dropdown]),
+        ft.Row([propio_banco_field, propio_librador_field, propio_cuit_field, propio_numero_field]),
+        ft.Row([propio_monto_field, propio_fecha_field]),
+        ft.Row([propio_observacion_field]),
+        botones_formulario(ft.Text("Guardar cheque"), guardar_propio, lambda: mostrar_lista()),
+        titulo="Nuevo cheque propio (para pagarle a un proveedor)",
+        subtitulo="Nace entregado al proveedor (nunca pasa por la cartera) y se aplica a sus cargos abiertos mas viejos. "
+                  "Para pagar una compra nueva, primero marcala a credito en Compras.",
+    )], visible=False)
 
-    seccion_form_propio = ft.Column(
-        [tarjeta(
-            ft.Text("Nuevo cheque propio (para pagarle a un proveedor)", size=15, weight=ft.FontWeight.BOLD),
-            ft.Text(
-                "Nace directamente entregado al proveedor -- nunca pasa por 'en cartera', porque "
-                "nunca lo recibimos nosotros. Se aplica a los cargos abiertos mas viejos de ese "
-                "proveedor (si es para pagar una compra nueva, primero marcala a credito en Compras "
-                "para que se genere el cargo).",
-                size=11.5, color=COLOR_TEXT_SOFT,
-            ),
-            ft.Row([propio_proveedor_dropdown]),
-            ft.Row([propio_banco_field, propio_librador_field, propio_cuit_field, propio_numero_field]),
-            ft.Row([propio_monto_field, propio_fecha_field]),
-            ft.Row([propio_observacion_field]),
-            ft.Row([guardar_propio_button, cancelar_propio_button]),
-        )],
-        visible=False, scroll=ft.ScrollMode.AUTO,
-    )
+    # ================= Entregar un cheque de la cartera =================
+    entregar_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
+    entregar_proveedor_dropdown = ft.Dropdown(label="Proveedor *", width=300, options=[])
+    cheque_a_entregar: dict = {}
 
-    # ================= FILAS DE LA LISTA (con acciones inline segun estado) =================
-    def construir_fila(c: dict, proveedores_activos: list[dict]) -> ft.Control:
-        partes_entidad = []
-        if c["cliente_id"]:
-            partes_entidad.append(f"Cliente: {nombre_cliente(c['cliente_id'])}")
-        if c["proveedor_id"]:
-            partes_entidad.append(f"Proveedor: {nombre_proveedor(c['proveedor_id'])}")
-        entidad_texto = "   |   ".join(partes_entidad) if partes_entidad else "-"
-        titulo = ft.Row(
-            [
-                ft.Container(ft.Text(c["banco"], weight=ft.FontWeight.BOLD), width=160),
-                ft.Container(ft.Text(c["librador"]), width=200),
-                ft.Container(ft.Text(c["numero"] or "-"), width=120),
-                ft.Container(ft.Text(formatear_precio(c["monto"]), weight=ft.FontWeight.BOLD), width=120),
-                ft.Container(ft.Text(c["fecha_pago"]), width=110),
-                ft.Container(
-                    ft.Text(ESTADO_LABEL.get(c["estado"], c["estado"]), color=ESTADO_COLOR.get(c["estado"]),
-                             weight=ft.FontWeight.BOLD),
-                    width=170,
-                ),
-            ],
-            wrap=True,
-        )
+    def ir_a_entregar(c: dict) -> None:
+        cheque_a_entregar.clear()
+        cheque_a_entregar.update(c)
+        entregar_titulo.value = f"Entregar el cheque {c['banco']} (${formatear_precio(c['monto'])}) a un proveedor"
+        entregar_proveedor_dropdown.options = [ft.dropdown.Option(key=str(p["id"]), text=p["nombre"])
+                                               for p in proveedores_service.listar_proveedores(solo_activos=True)]
+        entregar_proveedor_dropdown.value = None
+        mostrar_seccion(seccion_entregar)
 
-        detalle_controles = [
-            ft.Text(f"Origen: {ORIGEN_LABEL.get(c['origen_tipo'], c['origen_tipo'])}   |   {entidad_texto}"),
-            ft.Text(f"CUIT librador: {c['cuit_librador'] or '-'}   |   Recibido el: {c['fecha_recepcion'][:10]}"),
-        ]
-        if c["observacion"]:
-            detalle_controles.append(ft.Text(f"Observacion: {c['observacion']}"))
+    def confirmar_entrega() -> None:
+        try:
+            if not entregar_proveedor_dropdown.value:
+                raise ValueError("Elegi a que proveedor se lo entregas")
+            cheques_service.entregar_a_proveedor(cheque_a_entregar["id"], int(entregar_proveedor_dropdown.value))
+        except ERRORES_PARA_AVISAR as ex:
+            avisar(page, str(ex), error=True)
+            return
+        mostrar_lista()
+        avisar(page, "Cheque entregado al proveedor y aplicado a su cuenta corriente")
 
-        if c["estado"] == "en_cartera":
-            entregar_proveedor_dropdown = ft.Dropdown(
-                label="Entregar a este proveedor", width=260,
-                options=[ft.dropdown.Option(key=str(p["id"]), text=p["nombre"]) for p in proveedores_activos],
-            )
-            entregar_button = ft.ElevatedButton("Entregar a proveedor")
+    seccion_entregar = ft.Column([tarjeta(
+        ft.Row([entregar_proveedor_dropdown]),
+        botones_formulario(ft.Text("Entregar"), confirmar_entrega, lambda: mostrar_lista()),
+        titulo=entregar_titulo,
+        subtitulo="Se usa para pagarle al proveedor en vez de depositarlo: se aplica a sus cargos abiertos mas viejos.",
+    )], visible=False)
 
-            def entregar_click(e: ft.ControlEvent, cheque_id=c["id"]) -> None:
-                try:
-                    if not entregar_proveedor_dropdown.value:
-                        raise ValueError("Elegi a que proveedor se lo entregas")
-                    cheques_service.entregar_a_proveedor(cheque_id, int(entregar_proveedor_dropdown.value))
-                    mostrar_mensaje("Cheque entregado al proveedor")
-                    refrescar_lista()
-                except EXCEPCIONES_NEGOCIO as ex:
-                    mostrar_mensaje(str(ex))
-
-            entregar_button.on_click = entregar_click
-
-            baja_obs_field = ft.TextField(label="Motivo de la baja", expand=True)
-            baja_button = ft.ElevatedButton("Dar de baja")
-
-            def baja_click(e: ft.ControlEvent, cheque_id=c["id"]) -> None:
-                try:
-                    cheques_service.dar_de_baja(cheque_id, baja_obs_field.value or "")
-                    mostrar_mensaje("Cheque dado de baja")
-                    refrescar_lista()
-                except EXCEPCIONES_NEGOCIO as ex:
-                    mostrar_mensaje(str(ex))
-
-            baja_button.on_click = baja_click
-
-            rechazo_obs_field = ft.TextField(label="Motivo del rechazo", expand=True)
-            rechazar_button = ft.ElevatedButton("Marcar rechazado", bgcolor=COLOR_DANGER, color="#ffffff")
-
-            def rechazar_click(e: ft.ControlEvent, cheque_id=c["id"]) -> None:
-                try:
-                    cheques_service.marcar_rechazado(cheque_id, rechazo_obs_field.value or "")
-                    mostrar_mensaje("Cheque rechazado -- se genero un cargo nuevo en la cuenta corriente")
-                    refrescar_lista()
-                except EXCEPCIONES_NEGOCIO as ex:
-                    mostrar_mensaje(str(ex))
-
-            rechazar_button.on_click = rechazar_click
-
-            detalle_controles += [
-                ft.Divider(height=1),
-                ft.Row([entregar_proveedor_dropdown, entregar_button]),
-                ft.Row([baja_obs_field, baja_button]),
-                ft.Row([rechazo_obs_field, rechazar_button]),
-            ]
-        elif c["estado"] == "entregado_proveedor" and c["origen_tipo"] == "propio":
-            rechazo_obs_field = ft.TextField(label="Motivo del rechazo", expand=True)
-            rechazar_button = ft.ElevatedButton("Marcar rechazado", bgcolor=COLOR_DANGER, color="#ffffff")
-
-            def rechazar_propio_click(e: ft.ControlEvent, cheque_id=c["id"]) -> None:
-                try:
-                    cheques_service.marcar_rechazado(cheque_id, rechazo_obs_field.value or "")
-                    mostrar_mensaje("Cheque rechazado -- se genero un cargo nuevo en la cuenta corriente del proveedor")
-                    refrescar_lista()
-                except EXCEPCIONES_NEGOCIO as ex:
-                    mostrar_mensaje(str(ex))
-
-            rechazar_button.on_click = rechazar_propio_click
-            detalle_controles += [ft.Divider(height=1), ft.Row([rechazo_obs_field, rechazar_button])]
-
-        return ft.ExpansionTile(
-            title=titulo,
-            controls=[ft.Container(content=ft.Column(detalle_controles, spacing=8), padding=12)],
-            tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
-            affinity=ft.TileAffinity.LEADING,
-        )
-
-    # ================= REFRESCO DE LA LISTA =================
-    def refrescar_lista(e: ft.ControlEvent | None = None) -> None:
-        todos = cheques_service.listar_cheques()
-        filtrados = filtrar(todos, [
-            lambda c: coincide_exacto(c["estado"], estado_dropdown.value),
-            lambda c: coincide_exacto(c["origen_tipo"], origen_dropdown.value),
-            lambda c: (
-                coincide_texto(c["banco"], buscador_field.value)
-                or coincide_texto(c["librador"], buscador_field.value)
-                or coincide_texto(c["numero"], buscador_field.value)
-            ),
-        ])
-        en_cartera = [c for c in todos if c["estado"] == "en_cartera"]
-        total_en_cartera = sum((c["monto"] for c in en_cartera), 0)
-        contadores_texto.value = (
-            f"En cartera: {len(en_cartera)} ({formatear_precio(total_en_cartera)})   |   "
-            f"Entregados: {sum(1 for c in todos if c['estado'] == 'entregado_proveedor')}   |   "
-            f"Baja: {sum(1 for c in todos if c['estado'] == 'baja')}   |   "
-            f"Rechazados: {sum(1 for c in todos if c['estado'] == 'rechazado')}"
-        )
-        pagina = paginador.aplicar(filtrados)
-        proveedores_activos = proveedores_service.listar_proveedores(solo_activos=True)
-        contenedor_filas.controls = [construir_fila(c, proveedores_activos) for c in pagina]
+    # ================= Navegacion =================
+    def mostrar_seccion(seccion: ft.Control) -> None:
+        for s in (seccion_lista, seccion_form_recibido, seccion_form_propio, seccion_entregar):
+            s.visible = s is seccion
         page.update()
 
-    estado_dropdown.on_select = refrescar_lista
-    origen_dropdown.on_select = refrescar_lista
-    buscador_field.on_change = refrescar_lista
-
-    def abrir_form_recibido(e: ft.ControlEvent) -> None:
-        cliente_dropdown.options = [
-            ft.dropdown.Option(key=str(c["id"]), text=c["razon_social"])
-            for c in clientes_service.listar_clientes(solo_activos=True)
-        ]
-        limpiar_form_recibido()
-        seccion_lista.visible = False
-        seccion_form_recibido.visible = True
-        seccion_form_propio.visible = False
-        page.update()
-
-    def abrir_form_propio(e: ft.ControlEvent) -> None:
-        propio_proveedor_dropdown.options = [
-            ft.dropdown.Option(key=str(p["id"]), text=p["nombre"])
-            for p in proveedores_service.listar_proveedores(solo_activos=True)
-        ]
-        limpiar_form_propio()
-        seccion_lista.visible = False
-        seccion_form_recibido.visible = False
-        seccion_form_propio.visible = True
-        page.update()
-
-    nuevo_recibido_button.on_click = abrir_form_recibido
-    nuevo_propio_button.on_click = abrir_form_propio
+    def abrir_form(seccion: ft.Control) -> None:
+        cliente_dropdown.options = [ft.dropdown.Option(key=str(c["id"]), text=c["razon_social"])
+                                    for c in clientes_service.listar_clientes(solo_activos=True)]
+        propio_proveedor_dropdown.options = [ft.dropdown.Option(key=str(p["id"]), text=p["nombre"])
+                                             for p in proveedores_service.listar_proveedores(solo_activos=True)]
+        for campo in (recibido_banco_field, recibido_librador_field, recibido_cuit_field, recibido_numero_field,
+                      recibido_monto_field, recibido_observacion_field, propio_banco_field, propio_cuit_field,
+                      propio_numero_field, propio_monto_field, propio_observacion_field):
+            campo.value = ""
+        cliente_dropdown.value = propio_proveedor_dropdown.value = None
+        recibido_fecha_field.value = propio_fecha_field.value = fecha_hoy()
+        propio_librador_field.value = "Negocio propio"
+        mostrar_seccion(seccion)
 
     def mostrar_lista() -> None:
-        seccion_lista.visible = True
-        seccion_form_recibido.visible = False
-        seccion_form_propio.visible = False
-        refrescar_lista()
-        page.update()
+        mostrar_seccion(seccion_lista)
+        refrescar()
 
-    encabezado_tabla = ft.Row(
-        [
-            ft.Container(ft.Text("Banco", weight=ft.FontWeight.BOLD), width=160),
-            ft.Container(ft.Text("Librador", weight=ft.FontWeight.BOLD), width=200),
-            ft.Container(ft.Text("Numero", weight=ft.FontWeight.BOLD), width=120),
-            ft.Container(ft.Text("Monto", weight=ft.FontWeight.BOLD), width=120),
-            ft.Container(ft.Text("Fecha de pago", weight=ft.FontWeight.BOLD), width=110),
-            ft.Container(ft.Text("Estado", weight=ft.FontWeight.BOLD), width=170),
-        ],
-        wrap=True,
-    )
-
-    seccion_lista = ft.Column(
-        [
-            ft.Row([estado_dropdown, origen_dropdown, buscador_field], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            contadores_texto,
-            ft.Row([nuevo_recibido_button, nuevo_propio_button]),
-            tarjeta(con_scroll_horizontal(encabezado_tabla), contenedor_filas, paginador.controles),
-        ],
-        spacing=ESPACIO_PANTALLA,
-    )
-
-    refrescar_lista()
-
+    refrescar()
     return ft.Column(
         [encabezado_pantalla("Cheques", "Los cheques recibidos de clientes y los propios entregados a proveedores, con su estado."),
-         seccion_lista, seccion_form_recibido, seccion_form_propio],
-        expand=True,
-        scroll=ft.ScrollMode.AUTO,
-        spacing=ESPACIO_PANTALLA,
+         seccion_lista, seccion_form_recibido, seccion_form_propio, seccion_entregar],
+        expand=True, scroll=ft.ScrollMode.AUTO, spacing=ESPACIO_PANTALLA,
     )

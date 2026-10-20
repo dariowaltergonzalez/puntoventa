@@ -272,6 +272,27 @@ def obtener_o_crear_cliente_generico() -> dict:
     return _a_dict(clientes_repo.obtener_o_crear_por_razon_social(NOMBRE_CLIENTE_GENERICO))
 
 
+def es_cliente_generico(cliente: dict) -> bool:
+    return cliente["razon_social"] == NOMBRE_CLIENTE_GENERICO
+
+
+_CAMPOS_EDITABLES = (
+    "razon_social", "nombre_fantasia", "dni", "cuit", "contacto_principal", "telefono", "email", "direccion",
+    "ciudad", "provincia", "codigo_postal", "condicion_iva_id", "plazo_pago_dias", "porcentaje_descuento",
+    "limite_credito", "avisar_limite_credito", "bloquear_limite_credito", "tasa_interes_mora_diaria", "observacion",
+)
+
+
+def cambiar_activo(cliente_id: int, activo: bool) -> dict:
+    """Activar / desactivar desde la lista. Un cliente inactivo no se ofrece en la caja."""
+    cliente = obtener_cliente(cliente_id)
+    if cliente is None:
+        raise ClienteNoEncontradoError(f"No existe el cliente {cliente_id}")
+    if not activo and es_cliente_generico(cliente):
+        raise ValueError(f"'{NOMBRE_CLIENTE_GENERICO}' lo usa la caja para las ventas sin cliente: no se puede desactivar")
+    return actualizar_cliente(cliente_id=cliente_id, activo=activo, **{k: cliente[k] for k in _CAMPOS_EDITABLES})
+
+
 # ---- Contactos auxiliares ----
 
 def agregar_contacto(

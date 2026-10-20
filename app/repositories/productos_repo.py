@@ -110,9 +110,22 @@ def listar(solo_activos: bool = False, categoria_id: int | None = None) -> list[
         conn.close()
 
 
+# Columnas por las que la pantalla puede ordenar. Lista cerrada a proposito: el ORDER BY nunca se
+# arma con lo que llega de afuera, solo con estos textos fijos.
+ORDEN_PAGINA = {
+    "codigo": "codigo COLLATE NOCASE",
+    "nombre": "nombre COLLATE NOCASE",
+    "marca": "marca COLLATE NOCASE",
+    "costo": "precio_costo",
+    "venta": "precio_venta",
+    "stock": "stock_actual",
+}
+
+
 def listar_pagina(
     pagina: int, tamano_pagina: int, texto: str | None = None,
     solo_activos: bool = False, categoria_id: int | None = None,
+    orden: str = "nombre", descendente: bool = False,
 ) -> tuple[list[sqlite3.Row], int]:
     """Igual que `listar`, pero resuelta en SQL: pide solo la pagina pedida (LIMIT/OFFSET) y
     el total de registros via COUNT, en vez de traer toda la tabla y recortar en Python --
@@ -134,7 +147,8 @@ def listar_pagina(
         sql = "SELECT * FROM productos"
         if condiciones:
             sql += " WHERE " + " AND ".join(condiciones)
-        sql += " ORDER BY nombre"
+        direccion = "DESC" if descendente else "ASC"
+        sql += f" ORDER BY {ORDEN_PAGINA.get(orden, ORDEN_PAGINA['nombre'])} {direccion}, id {direccion}"
 
         return paginar(conn, sql, parametros, pagina, tamano_pagina)
     finally:

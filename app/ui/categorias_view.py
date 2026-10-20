@@ -1,90 +1,105 @@
 import flet as ft
 
-from app.services import categorias_service
-from app.services.exceptions import CategoriaDuplicadaError, CategoriaNoEncontradaError
-from app.ui.listados import con_scroll_horizontal
-from app.ui.componentes import ESPACIO_PANTALLA, encabezado_pantalla, tarjeta
+from app.services import categorias_service, productos_service
+from app.ui.componentes import (
+    ESPACIO_PANTALLA,
+    ERRORES_PARA_AVISAR,
+    Columna,
+    Lista,
+    accion_abrir,
+    avisar,
+    barra,
+    boton_principal,
+    botones_formulario,
+    campo_buscar,
+    encabezado_pantalla,
+    tarjeta,
+)
 
 
 def CategoriasView(page: ft.Page) -> ft.Control:
-    nombre_field = ft.TextField(label="Nombre de categoria", expand=True)
-    guardar_button_texto = ft.Text("Agregar")
-    guardar_button = ft.ElevatedButton(content=guardar_button_texto)
-    cancelar_button = ft.TextButton("Cancelar", visible=False)
-    tabla = ft.DataTable(
-        columns=[
-            ft.DataColumn(ft.Text("ID")),
-            ft.DataColumn(ft.Text("Nombre")),
-            ft.DataColumn(ft.Text("")),
-        ],
-        rows=[],
+    editando: dict | None = None
+
+    # ================= Lista =================
+    buscador_field = campo_buscar("Nombre de la categoria", al_cambiar=lambda: filtrar())
+    lista = Lista(
+        [Columna("Nombre", peso=3, orden="nombre"), Columna("Productos", ancho=100, derecha=True, orden="productos"),
+         Columna("Acciones", ancho=60, derecha=True)],
+        al_cambiar_pagina=lambda: refrescar(), nombre="categorias", orden_inicial=("nombre", False),
+        sin_datos="Ninguna categoria coincide con la busqueda.",
     )
 
-    editando_id = None
-
-    def mostrar_error(mensaje: str) -> None:
-        page.show_dialog(ft.SnackBar(ft.Text(mensaje)))
-
-    def limpiar_formulario() -> None:
-        nonlocal editando_id
-        editando_id = None
-        nombre_field.value = ""
-        guardar_button_texto.value = "Agregar"
-        cancelar_button.visible = False
+    def filtrar() -> None:
+        lista.ir_al_principio()
+        refrescar()
 
     def refrescar() -> None:
-        tabla.rows = [
-            ft.DataRow(
-                cells=[
-                    ft.DataCell(ft.Text(str(c["id"]))),
-                    ft.DataCell(ft.Text(c["nombre"])),
-                    ft.DataCell(
-                        ft.IconButton(ft.Icons.EDIT, tooltip="Editar", data=c["id"], on_click=iniciar_edicion)
-                    ),
-                ]
-            )
-            for c in categorias_service.listar_categorias()
-        ]
+        cantidades: dict[int, int] = {}
+        for p in productos_service.listar_productos():
+            cantidades[p["categoria_id"]] = cantidades.get(p["categoria_id"], 0) + 1
+        texto = (buscador_field.value or "").strip().lower()
+        categorias = [dict(c, productos=cantidades.get(c["id"], 0)) for c in categorias_service.listar_categorias()
+                      if texto in c["nombre"].lower()]
+        lista.mostrar(categorias, lambda c: [
+            c["nombre"], str(c["productos"]),
+            accion_abrir(ft.Icons.EDIT, "Editar categoria", lambda c=c: ir_a_formulario(c)),
+        ])
         page.update()
 
-    def iniciar_edicion(e: ft.ControlEvent) -> None:
-        nonlocal editando_id
-        categoria = categorias_service.obtener_categoria(e.control.data)
-        if categoria is None:
-            return
-        editando_id = categoria["id"]
-        nombre_field.value = categoria["nombre"]
-        guardar_button_texto.value = "Guardar cambios"
-        cancelar_button.visible = True
+    seccion_lista = ft.Column([
+        barra([buscador_field], [boton_principal("Nueva categoria", ft.Icons.ADD, lambda: ir_a_formulario(None))]),
+        lista.control,
+    ], spacing=ESPACIO_PANTALLA)
+
+    # ================= Formulario (alta / edicion) =================
+    form_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
+    guardar_texto = ft.Text("")
+    nombre_field = ft.TextField(label="Nombre *", width=360)
+
+    def ir_a_formulario(categoria: dict | None) -> None:
+        nonlocal editando
+        editando = categoria
+        form_titulo.value = f"Editar categoria: {categoria['nombre']}" if categoria else "Nueva categoria"
+        guardar_texto.value = "Guardar cambios" if categoria else "Agregar categoria"
+        nombre_field.value = categoria["nombre"] if categoria else ""
+        seccion_lista.visible = False
+        seccion_formulario.visible = True
         page.update()
 
-    def cancelar(e: ft.ControlEvent) -> None:
-        limpiar_formulario()
-        page.update()
+    def volver_a_lista() -> None:
+        seccion_formulario.visible = False
+        seccion_lista.visible = True
+        refrescar()
 
-    def guardar(e: ft.ControlEvent) -> None:
+    def guardar() -> None:
         try:
-            if editando_id is None:
-                categorias_service.crear_categoria(nombre_field.value or "")
+            if editando is None:
+                categoria = categorias_service.crear_categoria(nombre_field.value or "")
+                aviso = f"Categoria '{categoria['nombre']}' agregada"
             else:
-                categorias_service.actualizar_categoria(editando_id, nombre_field.value or "")
-            limpiar_formulario()
-            refrescar()
-        except (CategoriaDuplicadaError, CategoriaNoEncontradaError, ValueError) as ex:
-            mostrar_error(str(ex))
+                categoria = categorias_service.actualizar_categoria(editando["id"], nombre_field.value or "")
+                aviso = f"Categoria '{categoria['nombre']}' guardada"
+        except ERRORES_PARA_AVISAR as ex:
+            avisar(page, str(ex), error=True)
+            return
+        volver_a_lista()
+        avisar(page, aviso)
 
-    guardar_button.on_click = guardar
-    cancelar_button.on_click = cancelar
+    seccion_formulario = ft.Column([
+        tarjeta(
+            ft.Row([nombre_field]),
+            botones_formulario(guardar_texto, guardar, volver_a_lista),
+            titulo=form_titulo,
+            subtitulo="Al guardar o cancelar volves a la lista, donde la dejaste.",
+        ),
+    ], visible=False)
 
     refrescar()
-
     return ft.Column(
         [
             encabezado_pantalla("Categorias", "Agrupan los productos (Limpieza, Perfumeria, Descartables...)."),
-            tarjeta(ft.Row([nombre_field, guardar_button, cancelar_button]), titulo="Datos de la categoria"),
-            tarjeta(con_scroll_horizontal(tabla)),
+            seccion_lista,
+            seccion_formulario,
         ],
-        expand=True,
-        scroll=ft.ScrollMode.AUTO,
-        spacing=ESPACIO_PANTALLA,
+        expand=True, scroll=ft.ScrollMode.AUTO, spacing=ESPACIO_PANTALLA,
     )
