@@ -93,6 +93,12 @@ for (venta_id,) in db.execute("SELECT id FROM ventas WHERE estado = 'confirmada'
             f"costo {formatear_precio(ganancia['costo'])} (vendido por debajo del costo, o una devolucion que no volvio al stock)"
         )
 regla("Cada venta se cobro exactamente por su total", problemas_cobro)
+problemas_iva = []
+for (venta_id,) in db.execute("SELECT id FROM ventas WHERE estado = 'confirmada'"):
+    v = ventas_service.obtener_venta(venta_id)
+    if v["neto"] + v["iva"] != v["total"]:
+        problemas_iva.append(f"{v['numero']}: neto {formatear_precio(v['neto'])} + IVA {formatear_precio(v['iva'])} != total {formatear_precio(v['total'])}")
+regla("En cada venta, neto + IVA = total (aunque el IVA sea 0)", problemas_iva)
 
 # ================= Reporte de Ganancias =================
 # Tomando toda la historia, el reporte por periodo y la ganancia de cada venta (detalle) son dos

@@ -34,7 +34,7 @@ def main():
         proveedor_id=p1["id"],
         fecha_creacion="2026-09-01T10:00:00",
         fecha_estimada=None,
-        iva_porcentaje=21,
+        iva_porcentaje=2100,
         observacion="OC de prueba",
         items=[
             {"producto_id": producto_existente["id"], "descripcion_libre": None, "cantidad_pedida": 10000, "costo_pactado": 500},

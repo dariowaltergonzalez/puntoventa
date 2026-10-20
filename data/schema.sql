@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS ordenes_compra (
     estado            TEXT NOT NULL DEFAULT 'pendiente',  -- pendiente|recibida_parcial|recibida|cancelada
     fecha_creacion    TEXT NOT NULL,
     fecha_estimada    TEXT,                               -- nullable
-    iva_porcentaje    INTEGER,                            -- % IVA opcional (ej 21); NULL = sin IVA
+    iva_porcentaje    INTEGER,                            -- % IVA del proveedor, escalado x100 (2100 = 21%); NULL = sin IVA
     observacion       TEXT,
     recibida_en_el_acto INTEGER NOT NULL DEFAULT 0,        -- 1 si se creo y recibio en el mismo momento ('ya la tenes en mano')
     FOREIGN KEY (proveedor_id) REFERENCES proveedores (id)
@@ -441,7 +441,8 @@ CREATE TABLE IF NOT EXISTS ventas (
     estado                      TEXT NOT NULL DEFAULT 'pendiente',  -- pendiente|confirmada (una venta normal nace confirmada)
     fecha                       TEXT NOT NULL,
     fecha_confirmacion          TEXT,                               -- nullable: cuando paso a confirmada
-    iva_porcentaje              INTEGER,                            -- % IVA opcional; NULL = sin IVA
+    iva_porcentaje              INTEGER,                            -- % IVA escalado x100 (2100 = 21%); NULL/0 = sin IVA
+    precios_con_iva             INTEGER NOT NULL DEFAULT 0,         -- 1 = los precios ya incluian el IVA (se desglosa)
     descuento_total_porcentaje  INTEGER,                            -- escalado x100, descuento manual sobre el total
     descuento_cliente_porcentaje INTEGER,                           -- escalado x100, % fijo del cliente AL MOMENTO de vender
     observacion                 TEXT,
@@ -584,6 +585,8 @@ CREATE TABLE IF NOT EXISTS negocio (
     smtp_usuario           TEXT,
     smtp_remitente_nombre  TEXT,
     smtp_remitente_email   TEXT,
+    precios_incluyen_iva   INTEGER NOT NULL DEFAULT 1,  -- 1 = el precio del producto es el final (IVA adentro)
+    alicuota_iva           INTEGER NOT NULL DEFAULT 2100,  -- escalado x100 (21%)
     FOREIGN KEY (condicion_iva_id) REFERENCES condiciones_iva (id)
         ON DELETE SET NULL
         ON UPDATE CASCADE,
@@ -690,3 +693,63 @@ CREATE TABLE IF NOT EXISTS nota_credito_reintegros (
 
 CREATE INDEX IF NOT EXISTS idx_notas_credito_venta_id ON notas_credito (venta_id);
 CREATE INDEX IF NOT EXISTS idx_nota_credito_items_venta_item_id ON nota_credito_items (venta_item_id);
+
+-- Fase 5: borradores de venta (pre-ventas y presupuestos)
+
+CREATE TABLE IF NOT EXISTS borradores_venta (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo                        TEXT NOT NULL,             -- 'preventa' | 'presupuesto' (no son ventas: no tocan stock ni plata)
+    nombre                      TEXT NOT NULL,             -- ej. 'Senora con anteojos'
+    numero                      TEXT UNIQUE,               -- solo presupuestos ('P-0001')
+    cliente_id                  INTEGER,
+    cliente_nombre_nuevo        TEXT,
+    usar_cliente_generico       INTEGER NOT NULL DEFAULT 1,
+    lista_precio_id             INTEGER,
+    iva_porcentaje              INTEGER,                   -- escalado x100
+    precios_con_iva             INTEGER NOT NULL DEFAULT 0,
+    descuento_total_porcentaje  INTEGER,                   -- escalado x100
+    observacion                 TEXT,
+    estado                      TEXT NOT NULL DEFAULT 'abierta',  -- abierta | convertida | descartada
+    venta_id                    INTEGER,                   -- la venta en que se convirtio
+    motivo_descarte             TEXT,
+    fecha_validez               TEXT,                      -- solo presupuestos (AAAA-MM-DD, inclusive)
+    descuento_cliente_porcentaje INTEGER,                  -- solo presupuestos: % fijo del cliente congelado (x100)
+    fecha_creacion              TEXT NOT NULL,
+    fecha_actualizacion         TEXT NOT NULL,
+    FOREIGN KEY (cliente_id) REFERENCES clientes (id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    FOREIGN KEY (venta_id) REFERENCES ventas (id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    CHECK (tipo IN ('preventa', 'presupuesto')),
+    CHECK (estado IN ('abierta', 'convertida', 'descartada')),
+    CHECK (usar_cliente_generico IN (0, 1)),
+    CHECK (estado != 'convertida' OR venta_id IS NOT NULL)
+);
+
+CREATE TABLE IF NOT EXISTS borrador_venta_items (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    borrador_id                 INTEGER NOT NULL,
+    producto_id                 INTEGER,                   -- NULL si es item libre
+    descripcion_libre           TEXT,
+    cantidad                    INTEGER NOT NULL,          -- escalado x1000
+    precio_unitario             INTEGER,                   -- escalado x100 (en una pre-venta, solo los items libres)
+    descuento_item_porcentaje   INTEGER,                   -- escalado x100
+    precio_manual               INTEGER NOT NULL DEFAULT 0,  -- 1 = precio cambiado a mano en un presupuesto
+    FOREIGN KEY (borrador_id) REFERENCES borradores_venta (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (producto_id) REFERENCES productos (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CHECK (cantidad > 0),
+    CHECK (precio_unitario IS NULL OR precio_unitario >= 0),
+    CHECK ((producto_id IS NULL) != (descripcion_libre IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_borradores_venta_tipo_fecha ON borradores_venta (tipo, fecha_creacion);
+CREATE INDEX IF NOT EXISTS idx_borrador_venta_items_borrador_id ON borrador_venta_items (borrador_id);

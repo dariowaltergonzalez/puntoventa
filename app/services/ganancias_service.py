@@ -13,16 +13,16 @@ No incluye gastos del negocio: es lo que deja la mercaderia. Nada se guarda: se 
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from app.repositories import ganancias_repo, ventas_repo
+from app.repositories import ganancias_repo, lotes_repo, ventas_repo
 from app.services import movimientos_service, ventas_service
-from app.shared.money import entero_a_cantidad, entero_a_porcentaje
+from app.shared.money import entero_a_cantidad, entero_a_porcentaje, porcentaje_a_entero
 
 CENTAVO = Decimal("0.01")
 ESCALA_COSTO = Decimal("100000")  # cantidad x1000 * costo x100
 CLAVE_ITEMS_LIBRES = "libres"
 
 
-def _peso_linea(linea) -> Decimal:
+def peso_linea(linea) -> Decimal:
     """Lo que vale la linea antes de los descuentos de la venta entera (solo con el de linea)."""
     monto = Decimal(linea["cantidad"]) * Decimal(linea["precio_unitario"])
     if linea["descuento_item_porcentaje"] is not None:
@@ -30,7 +30,7 @@ def _peso_linea(linea) -> Decimal:
     return monto
 
 
-def _repartir(total: Decimal, pesos: list[Decimal]) -> list[Decimal]:
+def repartir(total: Decimal, pesos: list[Decimal]) -> list[Decimal]:
     """Reparte un monto entre lineas proporcional a su peso, centavo por centavo (metodo del
     mayor resto): la suma de las partes da exactamente el total, asi la tabla por producto
     cierra con la tarjeta de arriba."""
@@ -132,7 +132,7 @@ def resumen(desde: date, hasta: date) -> dict:
         lineas = lineas_por_venta.get(venta["id"], [])
         total = ventas_service.total_sin_iva(venta, [dict(l) for l in lineas])
         ganancia_venta = Decimal("0")
-        for linea, ingreso in zip(lineas, _repartir(total, [_peso_linea(l) for l in lineas])):
+        for linea, ingreso in zip(lineas, repartir(total, [peso_linea(l) for l in lineas])):
             costo = Decimal(linea["costo_lotes"]) / ESCALA_COSTO
             acumular(_clave_producto(linea), entero_a_cantidad(linea["cantidad"]), ingreso, costo)
             costo_vendido += costo
@@ -152,7 +152,7 @@ def resumen(desde: date, hasta: date) -> dict:
         lineas = lineas_por_nota.get(nota["id"], [])
         total_nota = _sin_iva_por_nota(nota["venta_id"], cache_notas)[nota["id"]]
         efecto = Decimal("0")
-        for linea, ingreso in zip(lineas, _repartir(total_nota, [_peso_linea(l) for l in lineas])):
+        for linea, ingreso in zip(lineas, repartir(total_nota, [peso_linea(l) for l in lineas])):
             costo = Decimal(linea["costo_devuelto"]) / ESCALA_COSTO
             acumular(_clave_producto(linea), -entero_a_cantidad(linea["cantidad"]), -ingreso, -costo)
             costo_devuelto += costo
@@ -245,3 +245,44 @@ def periodo(nombre: str, hoy: date | None = None) -> tuple[date, date]:
         fin = hoy.replace(day=1) - timedelta(days=1)
         return fin.replace(day=1), fin
     raise ValueError(f"Periodo desconocido: {nombre}")
+
+
+def estimar_ganancia(
+    lineas: list[dict], descuento_cliente: Decimal | None, descuento_total_entero: int | None,
+    iva_entero: int | None = None, precios_con_iva: bool = False,
+) -> dict:
+    """Ganancia ESTIMADA de un carrito o presupuesto que todavia no se vendio: lo que se cobraria
+    sin IVA (con todos los descuentos, repartido entre las lineas centavo por centavo) menos el
+    costo que tendria venderlo hoy (FIFO simulado, sin consumir lotes). Nunca entra en el reporte
+    de Ganancias: la real recien existe cuando se vende.
+    lineas: [{'producto_id', 'cantidad' (x1000), 'precio_unitario' (x100), 'descuento_item_porcentaje' (x100|None)}]"""
+    neto = ventas_service.calcular_totales(lineas, descuento_cliente, descuento_total_entero, iva_entero, precios_con_iva)["neto"]
+    ingresos = repartir(neto, [peso_linea(l) for l in lineas])
+    ya_tomado: dict[int, int] = {}
+    resultado = []
+    for linea, ingreso in zip(lineas, ingresos):
+        costo = Decimal("0")
+        if linea["producto_id"] is not None:
+            saltear = ya_tomado.get(linea["producto_id"], 0)
+            costo = Decimal(lotes_repo.simular_costo_fifo(linea["producto_id"], linea["cantidad"], saltear)) / ESCALA_COSTO
+            ya_tomado[linea["producto_id"]] = saltear + linea["cantidad"]
+        costo = costo.quantize(CENTAVO)
+        resultado.append({"ingreso": ingreso, "costo": costo, "ganancia": ingreso - costo,
+                          "margen": (100 * (ingreso - costo) / ingreso).quantize(Decimal("0.1")) if ingreso > 0 else None})
+    total_costo = sum((r["costo"] for r in resultado), Decimal("0"))
+    ganancia = neto - total_costo
+    return {
+        "lineas": resultado, "ingresos": neto, "costo": total_costo, "ganancia": ganancia,
+        "margen": (100 * ganancia / neto).quantize(Decimal("0.1")) if neto > 0 else None,
+    }
+
+
+def estimar_ganancia_carrito(
+    items: list[dict], lista_precio_id: int | None = None, cliente_id: int | None = None,
+    descuento_total_porcentaje: Decimal | None = None, borrador_id: int | None = None,
+) -> dict:
+    """La ganancia estimada del carrito que se esta armando en la caja (boton 'Ver ganancia')."""
+    lineas, descuento_cliente = ventas_service.preparar_carrito(items, lista_precio_id, cliente_id, borrador_id)
+    descuento_total = porcentaje_a_entero(descuento_total_porcentaje) if descuento_total_porcentaje is not None else None
+    iva_entero, precios_con_iva = ventas_service.condiciones_iva(borrador_id)
+    return estimar_ganancia(lineas, descuento_cliente, descuento_total, iva_entero, precios_con_iva)

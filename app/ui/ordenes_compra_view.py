@@ -14,7 +14,7 @@ from app.services.exceptions import (
     ProductoNoEncontradoError,
     ProveedorNoEncontradoError,
 )
-from app.shared.money import formatear_cantidad, formatear_precio
+from app.shared.money import formatear_cantidad, formatear_porcentaje, formatear_precio
 from app.ui.listados import Paginador, coincide_exacto, coincide_texto, con_scroll_horizontal, filtrar
 from app.ui.theme import COLOR_DANGER_WASH, COLOR_WARNING
 
@@ -330,7 +330,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             ESTADOS_LABEL.get(oc["estado"], oc["estado"]),
             oc["fecha_creacion"][:10],
             oc["fecha_estimada"] or "-",
-            str(oc["iva_porcentaje"]) if oc["iva_porcentaje"] is not None else "-",
+            f"{formatear_porcentaje(oc['iva_porcentaje']).replace(',00', '')}%" if oc["iva_porcentaje"] else "-",
             formatear_precio(oc["total_estimado"]),
         ]
         celdas = [ft.Container(ft.Text(v), width=w) for v, w in zip(valores, _ANCHOS_COLUMNAS_LISTA)]
@@ -415,7 +415,8 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     proveedor_nuevo_field = ft.TextField(label="O escribi un proveedor nuevo", width=250)
     proveedor_generico_switch = ft.Switch(label="Usar proveedor generico")
     fecha_estimada_field = ft.TextField(label="Fecha estimada de entrega (opcional)", width=220, hint_text="AAAA-MM-DD")
-    iva_field = ft.TextField(label="IVA % (opcional)", width=120)
+    iva_field = ft.TextField(label="IVA del proveedor %", width=170, hint_text="21",
+                             helper="Vacio = la factura no trae IVA")
     observacion_field = ft.TextField(label="Observacion (opcional)", expand=True)
     contenedor_lineas_pedido = ft.Column([])
     agregar_linea_button = ft.TextButton("+ Agregar linea", on_click=agregar_linea_pedido)
@@ -542,7 +543,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             guardar_form_texto.value = "Guardar cambios"
             proveedor_dropdown.value = str(oc["proveedor_id"])
             fecha_estimada_field.value = oc["fecha_estimada"] or ""
-            iva_field.value = str(oc["iva_porcentaje"]) if oc["iva_porcentaje"] is not None else ""
+            iva_field.value = formatear_porcentaje(oc["iva_porcentaje"]).replace(",00", "") if oc["iva_porcentaje"] else ""
             observacion_field.value = oc["observacion"] or ""
             ya_en_mano_switch.visible = False
             lineas_form.clear()
@@ -617,8 +618,9 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
             + f"Estado: {ESTADOS_LABEL.get(oc['estado'], oc['estado'])}   |   "
             f"Fecha: {oc['fecha_creacion'][:10]}   |   "
             f"F. estimada: {oc['fecha_estimada'] or '-'}   |   "
-            f"IVA: {oc['iva_porcentaje'] if oc['iva_porcentaje'] is not None else '-'}%   |   "
-            f"Total estimado: {formatear_precio(oc['total_estimado'])}"
+            f"Neto: {formatear_precio(oc['neto_estimado'])}   |   "
+            f"IVA {formatear_porcentaje(oc['iva_porcentaje']).replace(',00', '') if oc['iva_porcentaje'] else '0'}%: "
+            f"{formatear_precio(oc['iva_estimado'])}   |   Total estimado: {formatear_precio(oc['total_estimado'])}"
         )
         if oc["observacion"]:
             detalle_info.value += f"\nObservacion: {oc['observacion']}"

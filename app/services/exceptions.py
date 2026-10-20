@@ -120,3 +120,11 @@ class EnvioCorreoError(Exception):
 
 class NotaCreditoInvalidaError(Exception):
     pass
+
+
+class PreventaNoDisponibleError(Exception):
+    pass
+
+
+class PresupuestoNoDisponibleError(Exception):
+    pass

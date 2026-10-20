@@ -1,7 +1,7 @@
 import sqlite3
 
 from app.db.connection import get_connection
-from app.repositories import cc_repo, cheques_repo, contadores_repo, lotes_repo, movimientos_repo
+from app.repositories import borradores_repo, cc_repo, cheques_repo, contadores_repo, lotes_repo, movimientos_repo
 from app.repositories.paginacion import paginar
 
 
@@ -15,6 +15,8 @@ def crear_venta_confirmada(
     items: list[dict],
     pagos: list[dict],
     descuento_cliente_porcentaje: int | None = None,
+    borrador_id: int | None = None,
+    precios_con_iva: bool = False,
 ) -> dict:
     """Camino unico y normal de una venta (Fase 4): arma las lineas, consume stock FIFO,
     registra los pagos, y genera cargo en Cuentas Corrientes por cada pago marcado
@@ -32,10 +34,10 @@ def crear_venta_confirmada(
             """
             INSERT INTO ventas
                 (numero, cliente_id, lista_precio_id, estado, fecha, fecha_confirmacion,
-                 iva_porcentaje, descuento_total_porcentaje, descuento_cliente_porcentaje, observacion)
-            VALUES (?, ?, ?, 'confirmada', ?, ?, ?, ?, ?, ?)
+                 iva_porcentaje, precios_con_iva, descuento_total_porcentaje, descuento_cliente_porcentaje, observacion)
+            VALUES (?, ?, ?, 'confirmada', ?, ?, ?, ?, ?, ?, ?)
             """,
-            (numero, cliente_id, lista_precio_id, fecha, fecha, iva_porcentaje,
+            (numero, cliente_id, lista_precio_id, fecha, fecha, iva_porcentaje, int(precios_con_iva),
              descuento_total_porcentaje, descuento_cliente_porcentaje, observacion),
         )
         venta_id = cursor.lastrowid
@@ -108,6 +110,11 @@ def crear_venta_confirmada(
                     conn=conn,
                 )
                 cargos_generados.append(cargo_id)
+
+        if borrador_id is not None:
+            # La pre-venta o el presupuesto del que salio este carrito queda convertido en la misma
+            # transaccion: nunca una venta cobrada con su presupuesto todavia "abierto".
+            borradores_repo.marcar_convertido(borrador_id, venta_id, conn=conn)
 
         conn.commit()
         return {"venta_id": venta_id, "numero": numero, "cargos_generados": cargos_generados}

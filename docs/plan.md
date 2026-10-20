@@ -244,10 +244,68 @@ de productos sin precio, y desglose visible de los 3 descuentos acumulados junto
 - **Presupuesto**: venta sin confirmar que no toca stock, persiste en el tiempo, PDF
   membretado por mail. Puede convertirse en venta real.
 - **Pre-venta temporal**: venta sin confirmar guardada con un nombre, no toca stock, se
-  borra sola al final del día si no se retoma. Recuperable antes de eso.
+  borra sola al final del día si no se retoma. Recuperable antes de eso. Especificada abajo
+  (2026-10-20).
 - **Edición/anulación de ventas cerradas**: nota de crédito — especificada abajo
   (2026-10-19), primera parte de Fase 5 en implementarse.
 - **Reporte de estado de cuenta en PDF**: desde Cuentas Corrientes, descargable.
+
+## Presupuesto (especificado 2026-10-20)
+
+Una cotización al cliente, que puede tardar días en decidir. Usa la misma tabla de borradores
+que la pre-venta (tipo 'presupuesto'). No es una venta: no toca stock ni plata.
+
+- **Número propio** (P-0001), **fecha de validez** (15 días por defecto, editable).
+- **Cliente opcional** (se puede presupuestar a Consumidor Final).
+- **Precios congelados**: se guarda el precio de cada línea y el % fijo del cliente al
+  presupuestar. Al convertirlo en venta (estando vigente) se cobran esos precios, aunque la
+  lista o el % del cliente hayan cambiado. Lo que se agregue al convertir va al precio de hoy.
+- **Se modifica mientras esté vigente**: conserva su número; cada cambio queda en el Historial.
+- **Vencido**: no se convierte con precios viejos. "Renovar" recalcula con los precios de hoy,
+  le da otra validez y conserva el número.
+- **Rechazado**: con motivo opcional ("caro", "compró en otro lado").
+- **Convertido**: queda vinculado a su venta.
+- Stock: no se reserva; al convertir, si no alcanza, avisa y carga lo que hay.
+- **Ganancia estimada** (charla con Dario sobre su otra app: el dueño quiere ver cuánto le deja un
+  presupuesto antes de saber si se vende): por línea y total, con **FIFO simulado** ("si lo
+  vendiera hoy, saldría de estos lotes", sin consumir nada). Siempre rotulada "estimada"; nunca
+  entra en el reporte de Ganancias. Convertido → se muestra la **real** de la venta. En la caja,
+  oculta por defecto (el cliente puede ver la pantalla): botón 👁 "Ver ganancia".
+- **Precio editable por línea** en el detalle del presupuesto (pantalla Presupuestos): el dueño
+  sube o baja cada artículo mirando el margen (vista previa al tipear) y guarda. La línea queda
+  marcada "a mano"; modificar desde la caja la conserva. En una venta común el precio sigue
+  saliendo de la lista.
+- Lista con **Neto / IVA / Total** (el IVA va encima de los precios, como en el PDF de referencia)
+  y **Ganancia ($ / %)**.
+- **Extender validez** (vigente): solo corre la fecha, conserva todos los precios. **Renovar con
+  precios de hoy** (vencido): recalcula.
+- Comodato: descartado.
+- **Dónde**: menú Operaciones → Presupuestos (lista con número, cliente, total, validez y
+  estado; filtros; convertir / modificar / renovar / rechazar), y en la caja un botón para
+  guardar el carrito como presupuesto.
+- PDF y envío por mail: con el resto de los PDFs.
+
+## Pre-venta (especificada 2026-10-20)
+
+Un **carrito a medio armar guardado con un nombre** para retomarlo más tarde (el cliente se
+olvidó la billetera, un pedido de WhatsApp que se arma de a poco). No es una venta: no lleva
+número, **no descuenta ni reserva stock**, no mueve plata ni cuenta corriente.
+
+- **Se guarda en la base** (tabla de borradores), así sobrevive a cerrar la app o un corte de
+  luz. La misma tabla, con un campo "tipo", va a servir para los **presupuestos**.
+- **Guardar**: botón "Guardar para después (F7)" en la caja. Nombre sugerido (el del cliente si
+  hay uno elegido, si no "Pre-venta 1, 2..."), editable ("Señora con anteojos"). La pestaña se
+  libera. Si la pestaña venía de una pre-venta, se actualiza esa misma.
+- **Retomar**: botón "Pre-ventas (n)" arriba de la caja → lista de las de hoy (nombre, cliente,
+  productos, total aproximado, hora). Se abre en una pestaña nueva con el carrito armado; si ya
+  está abierta en una pestaña, va a esa.
+- Se conservan **cliente, lista de precios, líneas con su cantidad y su % de descuento, % sobre
+  el total, IVA y observación**. Los precios se vuelven a calcular con lo vigente (los ítems
+  libres conservan su precio). Si ya no alcanza el stock, avisa y carga lo que hay.
+- **Al cobrarla** queda "convertida", vinculada a su venta. Si se retoma y se cierra la pestaña
+  sin cobrar, sigue guardada.
+- **Descartar** desde la lista, con motivo opcional (no se puede si está abierta en una pestaña).
+- **Vencimiento**: las de días anteriores dejan de aparecer; se borran solas a la semana.
 
 ## Nota de crédito (especificada 2026-10-19)
 
@@ -462,6 +520,31 @@ Antes de mostrar cualquier reporte, se auditó el cálculo. Reglas:
   para llegar a la ganancia neta; deudas incobrables; si el IVA de las compras es costo
   (depende de si es monotributista o responsable inscripto); avisar al vender por debajo del
   costo.
+
+---
+
+# IVA en todo el circuito (especificado 2026-10-20)
+
+Dario: "el IVA tiene que estar en todos los cálculos, así sea 0" — para que ningún cálculo futuro
+lo olvide. Hasta acá era un campo manual opcional en la venta, y en Compras se guardaba pero
+**ningún cálculo lo usaba** (el cargo de una compra a crédito quedaba sin IVA).
+
+- **Configuración** (Datos del negocio): condición frente al IVA (ya existía), **"Mis precios de
+  venta incluyen IVA"** (sí/no) y **alícuota** (21% por defecto). Sin configurar: se trabaja sin
+  IVA y la caja avisa.
+- **Quién cobra IVA**: solo el negocio **Responsable Inscripto**, y en **todas** sus ventas (al RI
+  y al consumidor final; lo que cambia según el cliente es cómo se muestra en el comprobante:
+  discriminado o incluido). Monotributista / exento: IVA 0.
+- **Toda venta, presupuesto y nota de crédito tiene neto + IVA = total**, aunque el IVA sea 0.
+  Precios sin IVA → el IVA se suma al neto. Precios con IVA → el total es el precio y el IVA se
+  desglosa de adentro. El IVA **no se tipea en la caja**: lo pone la app según la configuración.
+  Un presupuesto guarda las condiciones de IVA con las que se prometió.
+- **La ganancia usa siempre el neto** (el IVA es del fisco, no del negocio).
+- **Compras**: el total de la OC y el **cargo de una compra a crédito incluyen el IVA del
+  proveedor** (lo que realmente se le debe). Costo de los lotes (para la ganancia): negocio RI →
+  **neto** (el IVA de la compra es crédito fiscal, se recupera); monotributista → **con IVA** (no
+  lo recupera, es costo). La recepción guarda además el costo tal cual lo facturó el proveedor.
+- **Cuadre**: neto + IVA = total en ventas y presupuestos.
 
 ---
 

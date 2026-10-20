@@ -11,6 +11,7 @@ from app.ui.medios_pago_view import MediosPagoView
 from app.ui.movimientos_view import MovimientosView
 from app.ui.negocio_view import NegocioView
 from app.ui.ordenes_compra_view import OrdenesCompraView
+from app.ui.presupuestos_view import PresupuestosView
 from app.ui.productos_view import ProductosView
 from app.ui.proveedores_view import ProveedoresView
 from app.ui.stock_view import StockView
@@ -36,6 +37,7 @@ GRUPOS_MENU = [
     ("Operaciones", [
         ("Compras", ft.Icons.SHOPPING_CART, OrdenesCompraView),
         ("Ventas", ft.Icons.POINT_OF_SALE, VentasView),
+        ("Presupuestos", ft.Icons.REQUEST_QUOTE, PresupuestosView),
         ("Movimientos", ft.Icons.SWAP_VERT, MovimientosView),
     ]),
     ("Cuentas", [
@@ -117,6 +119,13 @@ def build_app(page: ft.Page) -> None:
         padding=10,
         bgcolor=COLOR_RAIL,
     )
+
+    def abrir_presupuesto_en_caja(presupuesto_id: int | None) -> None:
+        # Presupuestos -> caja: deja el pedido en la Page y navega a Ventas, que lo abre al armarse.
+        page.presupuesto_a_abrir = presupuesto_id
+        seleccionar(next(i for i, (_, factory) in enumerate(items_menu) if factory is VentasView))
+
+    page.abrir_presupuesto_en_caja = abrir_presupuesto_en_caja
 
     seleccionar(0)
     page.add(ft.Row([menu, content], expand=True, spacing=0))

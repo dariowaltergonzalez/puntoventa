@@ -1,5 +1,6 @@
 import re
 import sqlite3
+from decimal import Decimal
 
 import keyring
 from keyring.errors import PasswordDeleteError
@@ -7,6 +8,7 @@ from keyring.errors import PasswordDeleteError
 from app.repositories import negocio_repo
 from app.services import condiciones_iva_service, log_service
 from app.services.exceptions import NegocioNoConfiguradoError
+from app.shared.money import entero_a_porcentaje, porcentaje_a_entero
 
 SEGURIDADES_SMTP = ("ssl", "starttls", "ninguna")
 
@@ -18,7 +20,9 @@ _CAMPOS_LOG = [
     "razon_social", "cuit", "condicion_iva_nombre", "nombre_fantasia", "ingresos_brutos", "inicio_actividades",
     "direccion", "ciudad", "provincia", "codigo_postal", "telefono", "email", "web",
     "smtp_servidor", "smtp_puerto", "smtp_seguridad", "smtp_usuario", "smtp_remitente_nombre", "smtp_remitente_email",
+    "precios_incluyen_iva", "alicuota_iva",
 ]
+CONDICION_QUE_COBRA_IVA = "Responsable Inscripto"
 
 
 def _texto_o_none(valor: str | None) -> str | None:
@@ -49,7 +53,32 @@ def _nombre_condicion_iva(condicion_iva_id: int | None) -> str | None:
 def _a_dict(fila: sqlite3.Row) -> dict:
     datos = {campo: fila[campo] for campo in negocio_repo.CAMPOS_NEGOCIO}
     datos["condicion_iva_nombre"] = _nombre_condicion_iva(fila["condicion_iva_id"])
+    datos["precios_incluyen_iva"] = bool(fila["precios_incluyen_iva"])
+    datos["alicuota_iva"] = entero_a_porcentaje(fila["alicuota_iva"])
     return datos
+
+
+def config_iva() -> dict:
+    """Unica fuente de verdad del IVA para toda la app (ventas, presupuestos, compras, ganancia).
+      cobra_iva:            solo el Responsable Inscripto cobra IVA (en todas sus ventas)
+      alicuota_entero:      x100 (2100 = 21%); 0 si no cobra
+      precios_con_iva:      los precios de venta ya lo incluyen (se desglosa) o se suma encima
+      iva_compras_es_costo: quien no cobra IVA tampoco lo recupera: el IVA de sus compras es costo
+      configurado:          False si todavia no se cargaron los datos del negocio"""
+    fila = negocio_repo.obtener()
+    if fila is None or fila["condicion_iva_id"] is None:
+        return {"cobra_iva": False, "alicuota_entero": 0, "precios_con_iva": False,
+                "iva_compras_es_costo": False, "configurado": False, "condicion": None}
+    condicion = _nombre_condicion_iva(fila["condicion_iva_id"])
+    cobra = condicion == CONDICION_QUE_COBRA_IVA
+    return {
+        "cobra_iva": cobra,
+        "alicuota_entero": fila["alicuota_iva"] if cobra else 0,
+        "precios_con_iva": bool(fila["precios_incluyen_iva"]) if cobra else False,
+        "iva_compras_es_costo": not cobra,
+        "configurado": True,
+        "condicion": condicion,
+    }
 
 
 def _cuenta_a_dict(fila: sqlite3.Row) -> dict:
@@ -99,6 +128,8 @@ def guardar_negocio(
     smtp_usuario: str | None = None,
     smtp_remitente_nombre: str | None = None,
     smtp_remitente_email: str | None = None,
+    precios_incluyen_iva: bool = True,
+    alicuota_iva: Decimal = Decimal("21"),
 ) -> dict:
     razon_social = (razon_social or "").strip()
     if not razon_social:
@@ -117,6 +148,8 @@ def guardar_negocio(
         raise ValueError(f"La seguridad SMTP debe ser una de {SEGURIDADES_SMTP}")
     if condicion_iva_id is not None and _nombre_condicion_iva(condicion_iva_id) is None:
         raise ValueError(f"No existe la condicion frente al IVA {condicion_iva_id}")
+    if alicuota_iva is None or not (0 <= alicuota_iva <= 100):
+        raise ValueError("La alicuota de IVA tiene que estar entre 0 y 100")
 
     datos = {
         "razon_social": razon_social, "cuit": cuit, "condicion_iva_id": condicion_iva_id,
@@ -127,6 +160,7 @@ def guardar_negocio(
         "web": _texto_o_none(web), "smtp_servidor": _texto_o_none(smtp_servidor), "smtp_puerto": smtp_puerto,
         "smtp_seguridad": smtp_seguridad, "smtp_usuario": _texto_o_none(smtp_usuario),
         "smtp_remitente_nombre": _texto_o_none(smtp_remitente_nombre), "smtp_remitente_email": smtp_remitente_email,
+        "precios_incluyen_iva": int(bool(precios_incluyen_iva)), "alicuota_iva": porcentaje_a_entero(alicuota_iva),
     }
     fila_antes = negocio_repo.obtener()
     negocio_repo.guardar(datos)

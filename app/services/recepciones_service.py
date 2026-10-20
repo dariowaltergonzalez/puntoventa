@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from app.repositories import ordenes_compra_repo, productos_repo, recepciones_repo
-from app.services import log_service
+from app.services import log_service, negocio_service
 from app.services.exceptions import (
     CodigoDuplicadoError,
     LineasVaciasError,
@@ -12,7 +12,7 @@ from app.services.exceptions import (
     ProductoInactivoError,
     ProductoNoEncontradoError,
 )
-from app.shared.money import cantidad_a_entero, entero_a_cantidad, entero_a_precio, precio_a_entero
+from app.shared.money import cantidad_a_entero, entero_a_cantidad, entero_a_porcentaje, entero_a_precio, precio_a_entero
 
 
 def validar_items_recepcion(items: list[dict]) -> list[dict]:
@@ -65,15 +65,27 @@ def validar_items_recepcion(items: list[dict]) -> list[dict]:
     return items_validados
 
 
-def calcular_monto_total_entero(items_validados: list[dict]) -> int:
-    """Suma cantidad*costo de todas las lineas (incluidos items libres, como flete) usando
-    aritmetica Decimal -- nunca multiplicando directamente dos columnas enteras de escalas
-    distintas. Sirve para el monto del cargo en Cuentas Corrientes cuando la recepcion es a credito."""
-    total = sum(
+def calcular_monto_total_entero(items_validados: list[dict], iva_entero: int | None = None) -> int:
+    """Lo que se le debe al proveedor por esta recepcion: cantidad*costo de todas las lineas
+    (incluidos items libres, como flete) MAS el IVA de la OC. Es el monto del cargo en Cuentas
+    Corrientes cuando la recepcion es a credito (antes se cargaba sin IVA)."""
+    neto = sum(
         (entero_a_cantidad(i["cantidad_recibida"]) * entero_a_precio(i["costo_unitario"]) for i in items_validados),
         Decimal("0"),
-    )
-    return precio_a_entero(total)
+    ).quantize(Decimal("1.00"))
+    iva = (neto * entero_a_porcentaje(iva_entero) / 100).quantize(Decimal("1.00")) if iva_entero else Decimal("0")
+    return precio_a_entero(neto + iva)
+
+
+def aplicar_costo_efectivo(items_validados: list[dict], iva_entero: int | None) -> list[dict]:
+    """Costo con el que entra cada lote (el que usa la ganancia). Si el negocio cobra IVA (RI),
+    el IVA de la compra es credito fiscal y se recupera: el costo es el neto. Si no lo cobra
+    (monotributo), no lo recupera: el IVA es parte del costo."""
+    es_costo = negocio_service.config_iva()["iva_compras_es_costo"]
+    factor = 1 + entero_a_porcentaje(iva_entero) / 100 if (iva_entero and es_costo) else Decimal("1")
+    for item in items_validados:
+        item["costo_lote"] = precio_a_entero((entero_a_precio(item["costo_unitario"]) * factor).quantize(Decimal("1.00")))
+    return items_validados
 
 
 def confirmar_recepcion(
@@ -90,8 +102,8 @@ def confirmar_recepcion(
     if oc["estado"] == "cancelada":
         raise OrdenCompraCanceladaError(f"La orden de compra {oc['numero']} esta cancelada")
 
-    items_validados = validar_items_recepcion(items)
-    monto_a_credito = calcular_monto_total_entero(items_validados) if a_credito else None
+    items_validados = aplicar_costo_efectivo(validar_items_recepcion(items), oc["iva_porcentaje"])
+    monto_a_credito = calcular_monto_total_entero(items_validados, oc["iva_porcentaje"]) if a_credito else None
 
     resultado = recepciones_repo.confirmar_recepcion(
         orden_compra_id=orden_compra_id,

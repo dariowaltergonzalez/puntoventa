@@ -1,15 +1,17 @@
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from app.repositories import productos_repo, ventas_repo
-from app.services import clientes_service, listas_precios_service, log_service, medios_pago_service
+from app.repositories import borradores_repo, productos_repo, ventas_repo
+from app.services import clientes_service, listas_precios_service, log_service, medios_pago_service, negocio_service
 from app.services.exceptions import (
     ClienteNoEncontradoError,
     LineasVaciasError,
     ListaPrecioNoEncontradaError,
     MedioPagoNoEncontradoError,
     MontoPagoInvalidoError,
+    PresupuestoNoDisponibleError,
+    PreventaNoDisponibleError,
     ProductoInactivoError,
     ProductoNoEncontradoError,
     ProductoSinPrecioError,
@@ -43,7 +45,48 @@ def _resolver_cliente(
     return clientes_service.obtener_o_crear_cliente_por_razon_social(nombre)
 
 
-def _validar_items(items_entrada: list[dict], lista_precio_id: int | None) -> list[dict]:
+def condiciones_de_borrador(borrador_id: int | None) -> dict | None:
+    """Si el carrito viene de una pre-venta o un presupuesto: lo valida (tiene que estar abierto, y
+    un presupuesto ademas vigente) y devuelve sus condiciones. Un presupuesto congela el precio de
+    cada producto y el % fijo del cliente: se cobra lo que se le prometio. Una pre-venta no congela
+    nada (se cobra a precio de hoy)."""
+    if borrador_id is None:
+        return None
+    fila = borradores_repo.obtener(borrador_id)
+    es_presupuesto = fila is not None and fila["tipo"] == "presupuesto"
+    error = PresupuestoNoDisponibleError if es_presupuesto else PreventaNoDisponibleError
+    if fila is None:
+        raise error(f"No existe el borrador {borrador_id}")
+    nombre = fila["numero"] or f"'{fila['nombre']}'"
+    if fila["estado"] != "abierta":
+        raise error(f"{'El presupuesto' if es_presupuesto else 'La pre-venta'} {nombre} ya fue {fila['estado']}")
+    condiciones = {"tipo": fila["tipo"], "nombre": nombre, "precios": {}, "descuento_cliente": None,
+                   "iva": fila["iva_porcentaje"] or 0, "precios_con_iva": bool(fila["precios_con_iva"])}
+    if es_presupuesto:
+        if fila["fecha_validez"] < date.today().isoformat():
+            raise error(f"El presupuesto {nombre} esta vencido: renovalo (con los precios de hoy) antes de cobrarlo")
+        condiciones["precios"] = {
+            f["producto_id"]: entero_a_precio(f["precio_unitario"])
+            for f in borradores_repo.listar_items(borrador_id) if f["producto_id"] is not None
+        }
+        condiciones["descuento_cliente"] = (
+            entero_a_porcentaje(fila["descuento_cliente_porcentaje"]) if fila["descuento_cliente_porcentaje"] else None
+        )
+    return condiciones
+
+
+def condiciones_iva(borrador_id: int | None = None) -> tuple[int, bool]:
+    """(% de IVA x100, precios con IVA incluido) para una venta. Un presupuesto trae las suyas
+    (lo que se prometio); todo lo demas sale de la configuracion del negocio. El IVA nunca se
+    tipea en la caja."""
+    condiciones = condiciones_de_borrador(borrador_id)
+    if condiciones and condiciones["tipo"] == "presupuesto":
+        return condiciones["iva"], condiciones["precios_con_iva"]
+    config = negocio_service.config_iva()
+    return config["alicuota_entero"], config["precios_con_iva"]
+
+
+def _validar_items(items_entrada: list[dict], lista_precio_id: int | None, precios_fijos: dict | None = None) -> list[dict]:
     """items_entrada: {'producto_id': int|None, 'descripcion_libre': str|None, 'cantidad': Decimal,
     'precio_unitario': Decimal|None (solo para items libres, se ignora si hay producto_id),
     'descuento_item_porcentaje': Decimal|None}. Exactamente uno de producto_id/descripcion_libre.
@@ -76,7 +119,9 @@ def _validar_items(items_entrada: list[dict], lista_precio_id: int | None) -> li
             if not producto["activo"]:
                 raise ProductoInactivoError(f"El producto '{producto['nombre']}' esta inactivo")
 
-            if lista_precio_id is not None:
+            if precios_fijos and producto_id in precios_fijos:
+                precio_unitario = precios_fijos[producto_id]
+            elif lista_precio_id is not None:
                 precio_unitario = listas_precios_service.calcular_precio_producto(producto_id, lista_precio_id)
             else:
                 precio_unitario = entero_a_precio(producto["precio_venta"])
@@ -120,11 +165,15 @@ def calcular_totales(
     items_validados: list[dict],
     cliente_porcentaje_descuento: Decimal | None,
     descuento_total_porcentaje_entero: int | None,
-    iva_porcentaje: int | None,
+    iva_entero: int | None = None,
+    precios_con_iva: bool = False,
 ) -> dict:
     """Aplica las 3 capas de descuento, todas acumulables (nunca se pisan): precio ya resuelto por
     item (con la lista de precios adentro) menos el descuento manual de esa linea si lo tiene ->
-    subtotal -> % fijo del cliente -> % manual sobre el total -> IVA si corresponde."""
+    subtotal -> % fijo del cliente -> % manual sobre el total -> IVA.
+    Siempre devuelve neto + iva = total (exacto), aunque el IVA sea 0:
+      precios sin IVA: el IVA (iva_entero, x100) se SUMA al neto
+      precios con IVA: el total es lo cobrado y el IVA se DESGLOSA de adentro"""
     subtotal = Decimal("0")
     for item in items_validados:
         cantidad = entero_a_cantidad(item["cantidad"])
@@ -144,13 +193,20 @@ def calcular_totales(
         pct_total = entero_a_porcentaje(descuento_total_porcentaje_entero)
         con_descuento_total = con_descuento_cliente * (Decimal("1") - pct_total / Decimal("100"))
 
-    total = con_descuento_total
-    if iva_porcentaje is not None:
-        total = con_descuento_total * (Decimal("1") + Decimal(iva_porcentaje) / Decimal("100"))
+    centavo = Decimal("1.00")
+    tasa = entero_a_porcentaje(iva_entero) / Decimal("100") if iva_entero else Decimal("0")
+    if precios_con_iva:
+        total = con_descuento_total.quantize(centavo)
+        neto = (total / (Decimal("1") + tasa)).quantize(centavo)
+    else:
+        neto = con_descuento_total.quantize(centavo)
+        total = neto + (neto * tasa).quantize(centavo)
 
     return {
-        "subtotal": subtotal.quantize(Decimal("1.00")),
-        "total": total.quantize(Decimal("1.00")),
+        "subtotal": subtotal.quantize(centavo),
+        "neto": neto,
+        "iva": total - neto,
+        "total": total,
     }
 
 
@@ -213,28 +269,38 @@ def _validar_pagos(pagos_entrada: list[dict], total_venta: Decimal) -> list[dict
     return pagos_validados
 
 
+def preparar_carrito(
+    items: list[dict], lista_precio_id: int | None = None, cliente_id: int | None = None, borrador_id: int | None = None,
+) -> tuple[list[dict], Decimal | None]:
+    """Lineas validadas con su precio ya resuelto (lista, precio normal o el congelado de un
+    presupuesto) y el % fijo del cliente que corresponde. Lo comparten la previsualizacion de la
+    caja y la ganancia estimada del carrito, para que nunca calculen con precios distintos."""
+    condiciones = condiciones_de_borrador(borrador_id)
+    items_validados = _validar_items(items, lista_precio_id, condiciones["precios"] if condiciones else None)
+    if condiciones and condiciones["tipo"] == "presupuesto":
+        return items_validados, condiciones["descuento_cliente"]
+    if cliente_id is not None:
+        cliente = clientes_service.obtener_cliente(cliente_id)
+        return items_validados, cliente["porcentaje_descuento"] if cliente else None
+    return items_validados, None
+
+
 def previsualizar_totales(
     items: list[dict],
     lista_precio_id: int | None = None,
     cliente_id: int | None = None,
     descuento_total_porcentaje: Decimal | None = None,
-    iva_porcentaje: Decimal | None = None,
+    borrador_id: int | None = None,
 ) -> dict:
     """Valida y calcula subtotal/total sin persistir nada -- para mostrar en vivo en la UI
     mientras se arma la venta, reutilizando exactamente la misma logica que crear_venta usa al
     confirmar (evita que la previsualizacion y el resultado final puedan llegar a diferir)."""
-    items_validados = _validar_items(items, lista_precio_id)
-    cliente_descuento = None
-    if cliente_id is not None:
-        cliente = clientes_service.obtener_cliente(cliente_id)
-        cliente_descuento = cliente["porcentaje_descuento"] if cliente else None
+    items_validados, cliente_descuento = preparar_carrito(items, lista_precio_id, cliente_id, borrador_id)
     descuento_total_entero = (
         porcentaje_a_entero(descuento_total_porcentaje) if descuento_total_porcentaje is not None else None
     )
-    return calcular_totales(
-        items_validados, cliente_descuento, descuento_total_entero,
-        int(iva_porcentaje) if iva_porcentaje is not None else None,
-    )
+    iva_entero, precios_con_iva = condiciones_iva(borrador_id)
+    return calcular_totales(items_validados, cliente_descuento, descuento_total_entero, iva_entero, precios_con_iva)
 
 
 def crear_venta(
@@ -244,14 +310,21 @@ def crear_venta(
     cliente_nombre_nuevo: str | None = None,
     usar_cliente_generico: bool = False,
     lista_precio_id: int | None = None,
-    iva_porcentaje: Decimal | None = None,
     descuento_total_porcentaje: Decimal | None = None,
     fecha: str | None = None,
     observacion: str | None = None,
+    borrador_id: int | None = None,
 ) -> dict:
     """Camino unico y normal de Fase 4: la venta nace directamente confirmada (descuenta stock,
-    registra los pagos, genera cargo en Cuentas Corrientes si corresponde), todo en un commit."""
+    registra los pagos, genera cargo en Cuentas Corrientes si corresponde), todo en un commit.
+    borrador_id: la pre-venta o el presupuesto del que sale el carrito (queda convertido; un
+    presupuesto ademas aporta sus precios y su % de cliente congelados)."""
+    condiciones = condiciones_de_borrador(borrador_id)
     cliente = _resolver_cliente(cliente_id, cliente_nombre_nuevo, usar_cliente_generico)
+    if condiciones and condiciones["tipo"] == "presupuesto":
+        descuento_cliente = condiciones["descuento_cliente"]
+    else:
+        descuento_cliente = cliente["porcentaje_descuento"]
 
     if lista_precio_id is not None and listas_precios_service.obtener_lista(lista_precio_id) is None:
         raise ListaPrecioNoEncontradaError(f"No existe la lista de precios {lista_precio_id}")
@@ -262,26 +335,27 @@ def crear_venta(
         porcentaje_a_entero(descuento_total_porcentaje) if descuento_total_porcentaje is not None else None
     )
 
-    items_validados = _validar_items(items, lista_precio_id)
-    totales = calcular_totales(
-        items_validados, cliente["porcentaje_descuento"], descuento_total_entero,
-        int(iva_porcentaje) if iva_porcentaje is not None else None,
-    )
+    items_validados = _validar_items(items, lista_precio_id, condiciones["precios"] if condiciones else None)
+    iva_entero, precios_con_iva = condiciones_iva(borrador_id)
+    totales = calcular_totales(items_validados, descuento_cliente, descuento_total_entero, iva_entero, precios_con_iva)
     pagos_validados = _validar_pagos(pagos, totales["total"])
 
     resultado = ventas_repo.crear_venta_confirmada(
         cliente_id=cliente["id"],
         lista_precio_id=lista_precio_id,
         fecha=fecha or datetime.now().isoformat(),
-        iva_porcentaje=int(iva_porcentaje) if iva_porcentaje is not None else None,
+        iva_porcentaje=iva_entero,
+        precios_con_iva=precios_con_iva,
         descuento_total_porcentaje=descuento_total_entero,
         observacion=(observacion or "").strip() or None,
         items=items_validados,
         pagos=pagos_validados,
-        descuento_cliente_porcentaje=(
-            porcentaje_a_entero(cliente["porcentaje_descuento"]) if cliente["porcentaje_descuento"] else None
-        ),
+        descuento_cliente_porcentaje=porcentaje_a_entero(descuento_cliente) if descuento_cliente else None,
+        borrador_id=borrador_id,
     )
+    if condiciones:
+        que = "El presupuesto" if condiciones["tipo"] == "presupuesto" else "La pre-venta"
+        log_service.registrar(condiciones["tipo"], borrador_id, f"{que} {condiciones['nombre']} se cobro como {resultado['numero']}")
 
     log_service.registrar(
         "venta", resultado["venta_id"],
@@ -356,6 +430,7 @@ def calcular_total_lineas(venta_fila: sqlite3.Row, lineas: list[dict]) -> dict:
         entero_a_porcentaje(descuento_cliente) if descuento_cliente is not None else None,
         venta_fila["descuento_total_porcentaje"],
         venta_fila["iva_porcentaje"],
+        bool(venta_fila["precios_con_iva"]),
     )
 
 
@@ -410,12 +485,15 @@ def obtener_venta(venta_id: int) -> dict | None:
         "estado": fila["estado"],
         "fecha": fila["fecha"],
         "fecha_confirmacion": fila["fecha_confirmacion"],
-        "iva_porcentaje": fila["iva_porcentaje"],
+        "iva_porcentaje": entero_a_porcentaje(fila["iva_porcentaje"]) if fila["iva_porcentaje"] else Decimal("0"),
+        "precios_con_iva": bool(fila["precios_con_iva"]),
         "descuento_total_porcentaje": descuento_total,
         "observacion": fila["observacion"],
         "items": items,
         "pagos": pagos,
         "subtotal": totales["subtotal"],
+        "neto": totales["neto"],
+        "iva": totales["iva"],
         "total": totales["total"],
         "descuento_cliente_porcentaje": (
             entero_a_porcentaje(fila["descuento_cliente_porcentaje"])
@@ -451,14 +529,9 @@ def listar_ventas_pagina(
 
 def total_sin_iva(venta_fila: sqlite3.Row, lineas: list[dict]) -> Decimal:
     """Lo cobrado por esas lineas con TODOS los descuentos de la venta (linea, % del cliente,
-    % sobre el total) pero sin IVA: el IVA no es plata del negocio, es del fisco."""
-    descuento_cliente = venta_fila["descuento_cliente_porcentaje"]
-    return calcular_totales(
-        lineas,
-        entero_a_porcentaje(descuento_cliente) if descuento_cliente is not None else None,
-        venta_fila["descuento_total_porcentaje"],
-        None,
-    )["total"]
+    % sobre el total) pero sin IVA: el IVA no es plata del negocio, es del fisco. Es el NETO
+    tanto si el IVA se sumo encima como si venia incluido en los precios."""
+    return calcular_total_lineas(venta_fila, lineas)["neto"]
 
 
 def detalle_ganancia_venta(venta: dict) -> dict:

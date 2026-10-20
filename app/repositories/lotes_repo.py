@@ -102,3 +102,40 @@ def obtener_ultimo_costo(producto_id: int) -> int | None:
         return fila["costo_unitario"] if fila else None
     finally:
         conn.close()
+
+
+
+def simular_costo_fifo(producto_id: int, cantidad: int, saltear: int = 0) -> int:
+    """Costo (x100000: cantidad x1000 * costo x100) que tendria vender 'cantidad' HOY, recorriendo
+    los lotes en orden FIFO SIN consumirlos -- para la ganancia estimada de un presupuesto o de un
+    carrito. 'saltear': lo que otras lineas del mismo producto ya 'tomaron' antes en la simulacion.
+    Si el stock no alcanza, lo que falta se valoriza al costo del lote mas reciente (o al precio de
+    costo de la ficha si el producto nunca tuvo lotes)."""
+    conn = get_connection()
+    try:
+        lotes = conn.execute(
+            "SELECT cantidad_restante, costo_unitario FROM lotes "
+            "WHERE producto_id = ? AND cantidad_restante > 0 ORDER BY fecha ASC, id ASC",
+            (producto_id,),
+        ).fetchall()
+        costo, restante = 0, cantidad
+        for lote in lotes:
+            disponible = lote["cantidad_restante"]
+            if saltear >= disponible:
+                saltear -= disponible
+                continue
+            disponible -= saltear
+            saltear = 0
+            tomar = min(restante, disponible)
+            costo += tomar * lote["costo_unitario"]
+            restante -= tomar
+            if restante == 0:
+                return costo
+        ultimo = conn.execute(
+            "SELECT costo_unitario FROM lotes WHERE producto_id = ? ORDER BY fecha DESC, id DESC LIMIT 1", (producto_id,)
+        ).fetchone()
+        if ultimo is None:
+            ultimo = conn.execute("SELECT precio_costo AS costo_unitario FROM productos WHERE id = ?", (producto_id,)).fetchone()
+        return costo + restante * ultimo["costo_unitario"]
+    finally:
+        conn.close()

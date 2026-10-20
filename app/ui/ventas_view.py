@@ -6,9 +6,13 @@ import flet as ft
 
 from app.services import (
     clientes_service,
+    ganancias_service,
+    negocio_service,
     listas_precios_service,
     medios_pago_service,
     notas_credito_service,
+    presupuestos_service,
+    preventas_service,
     productos_service,
     ventas_service,
 )
@@ -19,6 +23,8 @@ from app.services.exceptions import (
     MedioPagoNoEncontradoError,
     MontoPagoInvalidoError,
     NotaCreditoInvalidaError,
+    PresupuestoNoDisponibleError,
+    PreventaNoDisponibleError,
     ProductoInactivoError,
     ProductoNoEncontradoError,
     ProductoSinPrecioError,
@@ -56,7 +62,7 @@ EXCEPCIONES_NEGOCIO = (
     ClienteNoEncontradoError, LineasVaciasError, ListaPrecioNoEncontradaError,
     MedioPagoNoEncontradoError, MontoPagoInvalidoError, ProductoInactivoError,
     ProductoNoEncontradoError, ProductoSinPrecioError, StockInsuficienteError, ValueError,
-    NotaCreditoInvalidaError, VentaNoEncontradaError,
+    NotaCreditoInvalidaError, VentaNoEncontradaError, PreventaNoDisponibleError, PresupuestoNoDisponibleError,
 )
 
 ANCHO_CANT_COL = 158
@@ -118,12 +124,20 @@ def VentasView(page: ft.Page) -> ft.Control:
             "usar_generico": True,
             "lista_precio_id": None,
             "lineas": [],
-            "iva": "",
             "descuento_total": "",
             "observacion": "",
             "pagos": [],
             "total_calculado": None,
             "desglose_texto": "",
+            # Si la pestaña se armo desde una pre-venta o un presupuesto: al guardar se actualiza
+            # ese mismo, y al cobrar queda convertido (en la misma transaccion de la venta).
+            "borrador_id": None,
+            "borrador_tipo": None,
+            "borrador_etiqueta": None,
+            # Presupuesto: precios y % de cliente congelados (lo prometido). El servicio los vuelve
+            # a validar al cobrar; aca solo sirven para mostrar los mismos numeros en pantalla.
+            "precios_fijos": {},
+            "descuento_cliente_fijo": None,
         }
 
     def activo() -> dict:
@@ -138,6 +152,8 @@ def VentasView(page: ft.Page) -> ft.Control:
         return clientes_service.NOMBRE_CLIENTE_GENERICO
 
     def resolver_precio(t: dict, producto_id: int, producto: dict | None = None) -> Decimal:
+        if producto_id in t["precios_fijos"]:
+            return t["precios_fijos"][producto_id]
         if producto is None:
             producto = productos_service.obtener_producto(producto_id)
         if t["lista_precio_id"]:
@@ -200,7 +216,7 @@ def VentasView(page: ft.Page) -> ft.Control:
                     on_click=lambda e, i=idx: cambiar_pestana(i),
                     content=ft.Row(
                         [
-                            ft.Text(f"Venta {t['tab_id']}", size=12, weight=ft.FontWeight.BOLD,
+                            ft.Text(t["borrador_etiqueta"] or f"Venta {t['tab_id']}", size=12, weight=ft.FontWeight.BOLD,
                                      color=COLOR_ACCENT_STRONG if es_activa else COLOR_TEXT_SOFT),
                             ft.Container(
                                 bgcolor=COLOR_ACCENT if es_activa else COLOR_ACCENT_WASH,
@@ -716,14 +732,11 @@ def VentasView(page: ft.Page) -> ft.Control:
     )
 
     # ================= AJUSTES (IVA / descuento total / observacion) =================
-    iva_field = ft.TextField(label="IVA %", width=110, input_filter=FILTRO_DECIMALES)
+    # El IVA no se tipea: lo pone la app segun Datos del negocio (o el presupuesto, si el carrito
+    # viene de uno). Este campo solo lo muestra.
+    iva_field = ft.TextField(label="IVA", width=210, read_only=True)
     descuento_total_field = ft.TextField(label="Desc. total %", width=140, input_filter=FILTRO_DECIMALES)
     observacion_field = ft.TextField(label="Observacion del ticket", expand=True)
-
-    def on_iva_change(e: ft.ControlEvent) -> None:
-        activo()["iva"] = iva_field.value or ""
-        recalcular_totales_activo()
-        page.update()
 
     def on_descuento_total_change(e: ft.ControlEvent) -> None:
         activo()["descuento_total"] = descuento_total_field.value or ""
@@ -733,7 +746,6 @@ def VentasView(page: ft.Page) -> ft.Control:
     def on_observacion_change(e: ft.ControlEvent) -> None:
         activo()["observacion"] = observacion_field.value or ""
 
-    iva_field.on_change = on_iva_change
     descuento_total_field.on_change = on_descuento_total_change
     observacion_field.on_change = on_observacion_change
 
@@ -747,12 +759,125 @@ def VentasView(page: ft.Page) -> ft.Control:
     # ================= DOCK (total + cobrar) =================
     dock_total_texto = ft.Text("$ 0,00", size=30, weight=ft.FontWeight.BOLD, color=COLOR_TEXT)
     dock_desglose_texto = ft.Text("", size=15, weight=ft.FontWeight.W_600, color=COLOR_TEXT_SOFT)
+    # Ganancia estimada del carrito: oculta por defecto, porque la pantalla de la caja la puede ver
+    # el cliente que esta del otro lado del mostrador. Se muestra con el ojito.
+    dock_ganancia_texto = ft.Text("", size=13, weight=ft.FontWeight.BOLD, visible=False)
+    ver_ganancia = {"activo": False}
+    ver_ganancia_button = ft.IconButton(ft.Icons.VISIBILITY_OUTLINED, tooltip="Ver ganancia estimada", icon_size=20)
+
+    def alternar_ganancia(e: ft.ControlEvent | None = None) -> None:
+        ver_ganancia["activo"] = not ver_ganancia["activo"]
+        ver_ganancia_button.icon = ft.Icons.VISIBILITY_OFF_OUTLINED if ver_ganancia["activo"] else ft.Icons.VISIBILITY_OUTLINED
+        ver_ganancia_button.tooltip = "Ocultar ganancia" if ver_ganancia["activo"] else "Ver ganancia estimada"
+        recalcular_totales_activo()
+        page.update()
+
+    ver_ganancia_button.on_click = alternar_ganancia
     btn_cobrar = ft.ElevatedButton(
         content=ft.Text("Cobrar  (F12)", size=16, weight=ft.FontWeight.BOLD),
         bgcolor=COLOR_ACTION, color=ft.Colors.WHITE, height=54, disabled=True,
     )
     cancelar_venta_button = ft.OutlinedButton("Cancelar venta (F5)")
     reimprimir_button = ft.OutlinedButton("Reimprimir ultimo (F8)")
+    guardar_preventa_button = ft.OutlinedButton("Guardar para despues (F7)", icon=ft.Icons.BOOKMARK_ADD_OUTLINED)
+    guardar_presupuesto_button = ft.OutlinedButton("Presupuesto (F4)", icon=ft.Icons.REQUEST_QUOTE_OUTLINED)
+
+    # Franja inline (sin AlertDialog) para guardar el carrito como pre-venta (con un nombre) o
+    # como presupuesto (con dias de validez). franja_modo: 'preventa' | 'presupuesto'.
+    franja_modo = {"valor": "preventa"}
+    franja_icono = ft.Icon(ft.Icons.BOOKMARK_ADD_OUTLINED, color=COLOR_ACCENT_STRONG)
+    franja_titulo = ft.Text("", weight=ft.FontWeight.BOLD, color=COLOR_ACCENT_STRONG)
+    preventa_nombre_field = ft.TextField(label="Nombre de la pre-venta", expand=True, dense=True)
+    validez_field = ft.TextField(label="Validez (dias)", width=130, dense=True, input_filter=FILTRO_DECIMALES)
+    franja_espacio = ft.Container(expand=True)
+    preventa_franja = ft.Container(
+        visible=False, bgcolor=COLOR_ACCENT_WASH,
+        padding=ft.Padding.symmetric(horizontal=16, vertical=10),
+        border=ft.Border(top=ft.BorderSide(1, COLOR_BORDER)),
+        content=ft.Row([
+            franja_icono, franja_titulo, preventa_nombre_field, validez_field, franja_espacio,
+            ft.ElevatedButton("Guardar", on_click=lambda e: guardar_desde_franja()),
+            ft.TextButton("Cancelar", on_click=lambda e: ocultar_franja_preventa()),
+        ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    )
+
+    async def mostrar_franja(modo: str) -> None:
+        t = activo()
+        if not t["lineas"]:
+            mostrar_mensaje("El carrito esta vacio: no hay nada para guardar", aviso=True)
+            return
+        if modo == "preventa" and t["borrador_tipo"] == "presupuesto":
+            mostrar_mensaje(f"Este carrito es el presupuesto {t['borrador_etiqueta']}: guardalo con F4", aviso=True)
+            return
+        franja_modo["valor"] = modo
+        es_presupuesto = modo == "presupuesto"
+        franja_icono.icon = ft.Icons.REQUEST_QUOTE_OUTLINED if es_presupuesto else ft.Icons.BOOKMARK_ADD_OUTLINED
+        preventa_nombre_field.visible = not es_presupuesto
+        validez_field.visible = es_presupuesto
+        franja_espacio.visible = es_presupuesto
+        if es_presupuesto:
+            if t["borrador_tipo"] == "presupuesto":
+                franja_titulo.value = f"Guardar cambios del presupuesto {t['borrador_etiqueta'].split(' ')[0]} (conserva su numero):"
+                actual = presupuestos_service.obtener_presupuesto(t["borrador_id"])
+                validez_field.value = str(max(actual["dias_restantes"], 1)) if actual else str(presupuestos_service.VALIDEZ_DIAS)
+            else:
+                franja_titulo.value = "Guardar como presupuesto (no descuenta stock, congela los precios):"
+                validez_field.value = str(presupuestos_service.VALIDEZ_DIAS)
+        else:
+            franja_titulo.value = "Guardar para retomar despues (no descuenta stock):"
+            preventa_nombre_field.value = t["borrador_etiqueta"] if t["borrador_tipo"] == "preventa" else preventas_service.nombre_sugerido(
+                t["cliente_id"], t["cliente_nombre_nuevo"], t["usar_generico"],
+            )
+        preventa_franja.visible = True
+        page.update()
+        await (validez_field if es_presupuesto else preventa_nombre_field).focus()
+
+    async def mostrar_franja_preventa(e: ft.ControlEvent | None = None) -> None:
+        await mostrar_franja("preventa")
+
+    async def mostrar_franja_presupuesto(e: ft.ControlEvent | None = None) -> None:
+        await mostrar_franja("presupuesto")
+
+    def ocultar_franja_preventa() -> None:
+        preventa_franja.visible = False
+        page.update()
+
+    def guardar_desde_franja(e: ft.ControlEvent | None = None) -> None:
+        t = activo()
+        comunes = dict(
+            cliente_id=t["cliente_id"], cliente_nombre_nuevo=t["cliente_nombre_nuevo"],
+            usar_cliente_generico=t["usar_generico"], lista_precio_id=t["lista_precio_id"],
+            observacion=observacion_field.value,
+        )
+        try:
+            descuento_total = parsear_decimal_ar_opcional(descuento_total_field.value, "Descuento sobre el total")
+            if franja_modo["valor"] == "presupuesto":
+                dias = parsear_decimal_ar_opcional(validez_field.value, "La validez")
+                presupuesto = presupuestos_service.guardar_presupuesto(
+                    t["borrador_id"] if t["borrador_tipo"] == "presupuesto" else None, construir_items_ticket(t),
+                    descuento_total_porcentaje=descuento_total,
+                    validez_dias=int(dias) if dias is not None else presupuestos_service.VALIDEZ_DIAS, **comunes,
+                )
+                mensaje = (f"Presupuesto {presupuesto['numero']} guardado por {money(presupuesto['total'])}, "
+                           f"vence el {presupuesto['fecha_validez']:%d/%m}. Lo ves en Operaciones → Presupuestos.")
+            else:
+                preventa = preventas_service.guardar_preventa(
+                    t["borrador_id"] if t["borrador_tipo"] == "preventa" else None, preventa_nombre_field.value,
+                    construir_items_ticket(t), descuento_total_porcentaje=descuento_total, **comunes,
+                )
+                mensaje = f"Pre-venta '{preventa['nombre']}' guardada. La retomas desde 'Pre-ventas'."
+        except EXCEPCIONES_NEGOCIO as ex:
+            mostrar_mensaje(str(ex), aviso=True)
+            return
+        preventa_franja.visible = False
+        cerrar_ticket_actual()
+        refrescar_contador_preventas()
+        mostrar_mensaje(mensaje)
+
+    guardar_preventa_button.on_click = mostrar_franja_preventa
+    guardar_presupuesto_button.on_click = mostrar_franja_presupuesto
+    preventa_nombre_field.on_submit = guardar_desde_franja
+    validez_field.on_submit = guardar_desde_franja
 
     def cancelar_venta_click(e: ft.ControlEvent | None = None) -> None:
         t = activo()
@@ -775,16 +900,18 @@ def VentasView(page: ft.Page) -> ft.Control:
         bgcolor=ft.Colors.WHITE,
         content=ft.Row(
             [
-                cancelar_venta_button, reimprimir_button,
+                cancelar_venta_button, reimprimir_button, guardar_preventa_button, guardar_presupuesto_button,
                 ft.Container(expand=True),
                 ft.Column(
                     [
-                        ft.Text("TOTAL", size=13, weight=ft.FontWeight.BOLD, color=COLOR_TEXT_SOFT),
+                        ft.Row([ver_ganancia_button, ft.Text("TOTAL", size=13, weight=ft.FontWeight.BOLD, color=COLOR_TEXT_SOFT)],
+                               spacing=2, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                         ft.Row(
                             [dock_desglose_texto, dock_total_texto],
                             spacing=14, alignment=ft.MainAxisAlignment.END,
                             vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
+                        dock_ganancia_texto,
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.END, spacing=0,
                 ),
@@ -794,23 +921,38 @@ def VentasView(page: ft.Page) -> ft.Control:
         ),
     )
 
+    def texto_iva(iva_entero: int, precios_con_iva: bool) -> str:
+        if not negocio_service.config_iva()["configurado"]:
+            return "Sin configurar (Datos del negocio)"
+        if not iva_entero:
+            return "Sin IVA"
+        porcentaje = formatear_porcentaje(Decimal(iva_entero) / 100).replace(",00", "")
+        return f"{porcentaje}% incluido" if precios_con_iva else f"{porcentaje}% (se suma)"
+
     def construir_desglose(t: dict, totales: dict) -> str:
         # Hace visible por que el total no coincide con la simple suma de subtotales de linea --
         # el descuento fijo del cliente (Fase 2) se aplica solo sobre el total y no tiene
         # ninguna otra marca en pantalla, asi que sin esto parecia un error de calculo.
         partes = [f"Subtotal {money(totales['subtotal'])}"]
-        if t["cliente_id"]:
+        if t["borrador_tipo"] == "presupuesto":
+            if t["descuento_cliente_fijo"]:
+                partes.append(f"cliente -{formatear_porcentaje(t['descuento_cliente_fijo'])}% (del presupuesto)")
+        elif t["cliente_id"]:
             cliente = clientes_service.obtener_cliente(t["cliente_id"])
             if cliente and cliente["porcentaje_descuento"]:
                 partes.append(f"cliente -{formatear_porcentaje(cliente['porcentaje_descuento'])}%")
         if (descuento_total_field.value or "").strip():
             partes.append(f"desc. total -{descuento_total_field.value}%")
-        if (iva_field.value or "").strip():
-            partes.append(f"IVA +{iva_field.value}%")
+        if totales["iva"]:
+            iva_entero, precios_con_iva = ventas_service.condiciones_iva(t["borrador_id"])
+            porcentaje = formatear_porcentaje(Decimal(iva_entero) / 100).replace(",00", "")
+            partes.append(f"IVA {porcentaje}% incluido {money(totales['iva'])}" if precios_con_iva
+                          else f"+ IVA {porcentaje}% {money(totales['iva'])}")
         return "  ·  ".join(partes)
 
     def recalcular_totales_activo() -> None:
         t = activo()
+        dock_ganancia_texto.visible = False
         if not t["lineas"]:
             t["total_calculado"] = None
             t["desglose_texto"] = ""
@@ -822,16 +964,24 @@ def VentasView(page: ft.Page) -> ft.Control:
             return
         try:
             items = construir_items_ticket(t)
-            iva = parsear_decimal_ar_opcional(iva_field.value, "IVA")
             descuento_total = parsear_decimal_ar_opcional(descuento_total_field.value, "Descuento sobre el total")
+            iva_field.value = texto_iva(*ventas_service.condiciones_iva(t["borrador_id"]))
             totales = ventas_service.previsualizar_totales(
                 items, lista_precio_id=t["lista_precio_id"], cliente_id=t["cliente_id"],
-                descuento_total_porcentaje=descuento_total, iva_porcentaje=iva,
+                descuento_total_porcentaje=descuento_total, borrador_id=t["borrador_id"],
             )
             t["total_calculado"] = totales["total"]
             t["desglose_texto"] = construir_desglose(t, totales)
             dock_total_texto.value = money(totales["total"])
             dock_desglose_texto.value = t["desglose_texto"]
+            if ver_ganancia["activo"]:
+                estimada = ganancias_service.estimar_ganancia_carrito(
+                    items, t["lista_precio_id"], t["cliente_id"], descuento_total, t["borrador_id"],
+                )
+                margen = f"{str(estimada['margen']).replace('.', ',')} %" if estimada["margen"] is not None else "-"
+                dock_ganancia_texto.value = f"Ganancia estimada {money(estimada['ganancia'])} ({margen}) · costo {money(estimada['costo'])}"
+                dock_ganancia_texto.color = COLOR_DANGER if estimada["ganancia"] < 0 else COLOR_SUCCESS
+                dock_ganancia_texto.visible = True
             errores_texto.value = ""
             btn_cobrar.disabled = False
         except EXCEPCIONES_NEGOCIO as ex:
@@ -1190,7 +1340,6 @@ def VentasView(page: ft.Page) -> ft.Control:
                 }
                 for p in t["pagos"]
             ]
-            iva = parsear_decimal_ar_opcional(iva_field.value, "IVA")
             descuento_total = parsear_decimal_ar_opcional(descuento_total_field.value, "Descuento sobre el total")
             venta = ventas_service.crear_venta(
                 items=items, pagos=pagos,
@@ -1198,10 +1347,12 @@ def VentasView(page: ft.Page) -> ft.Control:
                 cliente_nombre_nuevo=t["cliente_nombre_nuevo"] or None,
                 usar_cliente_generico=t["usar_generico"],
                 lista_precio_id=t["lista_precio_id"],
-                iva_porcentaje=iva,
                 descuento_total_porcentaje=descuento_total,
                 observacion=observacion_field.value,
+                borrador_id=t["borrador_id"],
             )
+            if t["borrador_id"] is not None:
+                refrescar_contador_preventas()
             mostrar_mensaje(f"{venta['numero']} confirmada — Total {money(venta['total'])}")
             cerrar_cobro()
             cerrar_ticket_actual()
@@ -1210,7 +1361,7 @@ def VentasView(page: ft.Page) -> ft.Control:
 
     btn_confirmar_cobro.on_click = confirmar_cobro_click
 
-    main_columna = ft.Column([cart_wrap, ajustes_strip, dock], expand=True, spacing=0)
+    main_columna = ft.Column([cart_wrap, ajustes_strip, preventa_franja, dock], expand=True, spacing=0)
     main_stack = ft.Stack([main_columna, cobro_overlay], expand=True)
 
     def abrir_cobro_click(e: ft.ControlEvent) -> None:
@@ -1463,30 +1614,31 @@ def VentasView(page: ft.Page) -> ft.Control:
 
     nc_confirmar_button.on_click = confirmar_nota_credito
 
-    def cargar_venta_en_caja(venta: dict, items_acreditados: list[dict]) -> None:
-        """'Corregir venta': abre una pestaña nueva con el mismo cliente, ajustes y lineas
-        (las cantidades que se acaban de acreditar), lista para ajustar y cobrar de nuevo."""
+    def abrir_carrito_en_pestana_nueva(
+        cliente_id: int | None, cliente_nombre_nuevo: str | None, es_generico: bool, lista_precio_id: int | None,
+        descuento_total: Decimal | None, observacion: str | None, lineas: list[dict],
+        precios_fijos: dict | None = None,
+    ) -> dict:
+        """Abre una pestaña nueva con un carrito ya armado ('Corregir venta', 'Retomar pre-venta').
+        lineas: [{'producto_id', 'descripcion_libre', 'cantidad', 'precio_unitario' (solo libres),
+        'descuento_item_porcentaje'}]. Los productos se agregan con agregar_producto, que avisa si
+        ya no alcanza el stock y carga lo que hay."""
         t = nuevo_ticket()
         tickets.append(t)
         estado["activo_idx"] = len(tickets) - 1
-        es_generico = venta["cliente_nombre"] == clientes_service.NOMBRE_CLIENTE_GENERICO
+        t["precios_fijos"] = dict(precios_fijos or {})
         t["usar_generico"] = es_generico
-        t["cliente_id"] = None if es_generico else venta["cliente_id"]
-        t["lista_precio_id"] = venta["lista_precio_id"]
-        t["iva"] = str(venta["iva_porcentaje"]) if venta["iva_porcentaje"] is not None else ""
-        t["descuento_total"] = (
-            formatear_porcentaje(venta["descuento_total_porcentaje"]) if venta["descuento_total_porcentaje"] is not None else ""
-        )
-        t["observacion"] = venta["observacion"] or ""
-        cantidades = {i["venta_item_id"]: i["cantidad"] for i in items_acreditados}
-        for item in venta["items"]:
-            cantidad = cantidades.get(item["id"], Decimal("0"))
+        t["cliente_id"] = None if es_generico else cliente_id
+        t["cliente_nombre_nuevo"] = "" if es_generico or cliente_id else (cliente_nombre_nuevo or "")
+        t["lista_precio_id"] = lista_precio_id
+        t["descuento_total"] = formatear_porcentaje(descuento_total) if descuento_total is not None else ""
+        t["observacion"] = observacion or ""
+        for item in lineas:
+            cantidad, descuento = item["cantidad"], item["descuento_item_porcentaje"]
             if cantidad <= 0:
                 continue
-            descuento = item["descuento_item_porcentaje"]
             if item["producto_id"] is not None:
-                producto = productos_service.obtener_producto(item["producto_id"])
-                agregar_producto(t, producto, cantidad)
+                agregar_producto(t, productos_service.obtener_producto(item["producto_id"]), cantidad)
                 linea = next((l for l in t["lineas"] if l["tipo"] == "producto" and l["producto_id"] == item["producto_id"]), None)
             else:
                 linea = crear_linea_libre(t)
@@ -1500,6 +1652,17 @@ def VentasView(page: ft.Page) -> ft.Control:
             if linea is not None and descuento is not None:
                 linea["descuento_item_porcentaje"] = descuento
                 linea["desc_field"].value = formatear_porcentaje(descuento)
+        return t
+
+    def cargar_venta_en_caja(venta: dict, items_acreditados: list[dict]) -> None:
+        """'Corregir venta': mismo cliente, ajustes y lineas (las cantidades recien acreditadas)."""
+        cantidades = {i["venta_item_id"]: i["cantidad"] for i in items_acreditados}
+        abrir_carrito_en_pestana_nueva(
+            venta["cliente_id"], None, venta["cliente_nombre"] == clientes_service.NOMBRE_CLIENTE_GENERICO,
+            venta["lista_precio_id"],
+            venta["descuento_total_porcentaje"], venta["observacion"],
+            [{**item, "cantidad": cantidades.get(item["id"], Decimal("0"))} for item in venta["items"]],
+        )
         mostrar_caja()
         renderizar_ticket_activo()
 
@@ -1515,7 +1678,7 @@ def VentasView(page: ft.Page) -> ft.Control:
         detalle_titulo.value = f"{venta['numero']} - {venta['cliente_nombre']}"
         detalle_info.value = (
             f"Fecha: {venta['fecha'][:16]}   |   Estado: {venta['estado'].capitalize()}   |   "
-            f"IVA: {venta['iva_porcentaje'] if venta['iva_porcentaje'] is not None else '-'}%"
+            f"IVA: {texto_iva(int(venta['iva_porcentaje'] * 100), venta['precios_con_iva']) if venta['iva_porcentaje'] else 'Sin IVA'}"
         )
         if venta["observacion"]:
             detalle_info.value += f"\nObservacion: {venta['observacion']}"
@@ -1540,7 +1703,9 @@ def VentasView(page: ft.Page) -> ft.Control:
             ])
             for p in venta["pagos"]
         ]
-        detalle_total_texto.value = f"Total: {formatear_precio(venta['total'])}"
+        detalle_total_texto.value = (
+            f"Total: {formatear_precio(venta['total'])}   (neto {formatear_precio(venta['neto'])} + IVA {formatear_precio(venta['iva'])})"
+        )
         hay_notas = bool(venta["notas_credito"])
         detalle_neto_texto.visible = hay_notas
         detalle_neto_texto.value = (
@@ -1583,10 +1748,129 @@ def VentasView(page: ft.Page) -> ft.Control:
         visible=False, expand=True, scroll=ft.ScrollMode.AUTO, spacing=8,
     )
 
+    # ================= SECCION PRE-VENTAS (carritos guardados para despues) =================
+    preventas_boton_texto = ft.Text("Pre-ventas", weight=ft.FontWeight.BOLD)
+    tabla_preventas = ft.DataTable(
+        columns=[ft.DataColumn(ft.Text(t)) for t in ["Nombre", "Cliente", "Productos", "Total aprox.", "Guardada", ""]],
+        rows=[],
+    )
+    sin_preventas_texto = ft.Text("No hay pre-ventas guardadas hoy. Desde la caja: 'Guardar para despues (F7)'.",
+                                  color=COLOR_TEXT_SOFT)
+    descarte_estado: dict = {"preventa": None}
+    descarte_titulo = ft.Text("", weight=ft.FontWeight.BOLD, color=COLOR_DANGER)
+    descarte_motivo_field = ft.TextField(label="Motivo (opcional)", expand=True, dense=True)
+    descarte_franja = ft.Container(
+        visible=False, padding=12, border=ft.Border.all(1, COLOR_DANGER), border_radius=8,
+        content=ft.Row([
+            descarte_titulo, descarte_motivo_field,
+            ft.ElevatedButton("Descartar", on_click=lambda e: confirmar_descarte()),
+            ft.TextButton("Cancelar", on_click=lambda e: ocultar_descarte()),
+        ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    )
+
+    def refrescar_contador_preventas() -> None:
+        cantidad = len(preventas_service.listar_preventas_del_dia())
+        preventas_boton_texto.value = f"Pre-ventas ({cantidad})" if cantidad else "Pre-ventas"
+
+    def pestana_de_preventa(preventa_id: int) -> int | None:
+        return next((i for i, t in enumerate(tickets) if t["borrador_id"] == preventa_id), None)
+
+    def refrescar_lista_preventas() -> None:
+        preventas = preventas_service.listar_preventas_del_dia()
+        tabla_preventas.rows = [
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text(pv["nombre"], weight=ft.FontWeight.BOLD)),
+                ft.DataCell(ft.Text(pv["cliente_nombre"])),
+                ft.DataCell(ft.Text(str(len(pv["items"])))),
+                ft.DataCell(ft.Text(money(pv["total_aproximado"]))),
+                ft.DataCell(ft.Text(preventas_service.hora(pv["fecha_creacion"]) + (
+                    "  (abierta en una pestaña)" if pestana_de_preventa(pv["id"]) is not None else ""))),
+                ft.DataCell(ft.Row([
+                    ft.ElevatedButton("Retomar", icon=ft.Icons.SHOPPING_CART_CHECKOUT,
+                                      on_click=lambda e, i=pv["id"]: retomar_preventa(i)),
+                    ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip="Descartar", icon_color=COLOR_DANGER,
+                                  on_click=lambda e, x=pv: mostrar_descarte(x)),
+                ], spacing=4, tight=True)),
+            ])
+            for pv in preventas
+        ]
+        tabla_preventas.visible = bool(preventas)
+        sin_preventas_texto.visible = not preventas
+        preventas_boton_texto.value = f"Pre-ventas ({len(preventas)})" if preventas else "Pre-ventas"
+
+    def retomar_preventa(preventa_id: int) -> None:
+        idx = pestana_de_preventa(preventa_id)
+        if idx is not None:
+            estado["activo_idx"] = idx
+            mostrar_caja()
+            renderizar_ticket_activo()
+            return
+        pv = preventas_service.obtener_preventa(preventa_id)
+        if pv is None or pv["estado"] != "abierta":
+            mostrar_mensaje("Esa pre-venta ya no esta disponible", aviso=True)
+            refrescar_lista_preventas()
+            page.update()
+            return
+        t = abrir_carrito_en_pestana_nueva(
+            pv["cliente_id"], pv["cliente_nombre_nuevo"], pv["usar_cliente_generico"], pv["lista_precio_id"],
+            pv["descuento_total_porcentaje"], pv["observacion"], pv["items"],
+        )
+        t["borrador_id"], t["borrador_tipo"], t["borrador_etiqueta"] = pv["id"], "preventa", pv["nombre"]
+        mostrar_caja()
+        renderizar_ticket_activo()
+        if pv["avisos"]:
+            mostrar_mensaje("Ojo: " + "; ".join(pv["avisos"]) + ". Se cargo lo que hay.", aviso=True)
+        else:
+            mostrar_mensaje(f"Pre-venta '{pv['nombre']}' retomada")
+
+    def mostrar_descarte(pv: dict) -> None:
+        if pestana_de_preventa(pv["id"]) is not None:
+            mostrar_mensaje(f"'{pv['nombre']}' esta abierta en una pestaña: cerrala antes de descartarla", aviso=True)
+            return
+        descarte_estado["preventa"] = pv
+        descarte_titulo.value = f"Descartar '{pv['nombre']}'"
+        descarte_motivo_field.value = ""
+        descarte_franja.visible = True
+        page.update()
+
+    def ocultar_descarte() -> None:
+        descarte_estado["preventa"] = None
+        descarte_franja.visible = False
+        page.update()
+
+    def confirmar_descarte() -> None:
+        pv = descarte_estado["preventa"]
+        if pv is None:
+            return
+        try:
+            preventas_service.descartar_preventa(pv["id"], descarte_motivo_field.value)
+        except EXCEPCIONES_NEGOCIO as ex:
+            mostrar_mensaje(str(ex), aviso=True)
+            return
+        descarte_estado["preventa"] = None
+        descarte_franja.visible = False
+        refrescar_lista_preventas()
+        mostrar_mensaje(f"Pre-venta '{pv['nombre']}' descartada")
+        page.update()
+
+    seccion_preventas = ft.Column(
+        [
+            ft.Row([ft.Text("Pre-ventas de hoy", size=20, weight=ft.FontWeight.BOLD),
+                    ft.Container(expand=True), ft.TextButton("Volver a la caja", on_click=lambda e: mostrar_caja())]),
+            ft.Text("Carritos guardados para retomar mas tarde. No descuentan stock. "
+                    "Las de dias anteriores ya no aparecen y se borran solas a la semana.",
+                    size=12.5, color=COLOR_TEXT_SOFT),
+            descarte_franja,
+            con_scroll_horizontal(tabla_preventas),
+            sin_preventas_texto,
+        ],
+        visible=False, expand=True, scroll=ft.ScrollMode.AUTO, spacing=12,
+    )
+
     # ================= SECCION CAJA (pantalla por defecto) =================
     ayuda_teclado_texto = ft.Text(
         "Tab pasa al siguiente campo   ·   Enter agrega producto   ·   F3 Item libre   ·   "
-        "F5 Cancelar venta   ·   F8 Reimprimir ultimo   ·   F9 Nueva venta   ·   "
+        "F4 Presupuesto   ·   F5 Cancelar venta   ·   F7 Guardar para despues   ·   F8 Reimprimir ultimo   ·   F9 Nueva venta   ·   "
         "F12 Cobrar / confirmar cobro   ·   (dentro del cobro) F1-F4 elige medio de pago, ESC vuelve",
         size=11, color=COLOR_TEXT_SOFT,
     )
@@ -1611,6 +1895,8 @@ def VentasView(page: ft.Page) -> ft.Control:
                 [
                     *encabezado_izquierda,
                     ft.Container(expand=True),
+                    ft.TextButton(content=preventas_boton_texto, icon=ft.Icons.BOOKMARKS_OUTLINED,
+                                  on_click=lambda e: mostrar_preventas()),
                     ft.TextButton("Ver ventas anteriores", on_click=lambda e: mostrar_historial()),
                 ],
                 spacing=10,
@@ -1628,10 +1914,22 @@ def VentasView(page: ft.Page) -> ft.Control:
         seccion_caja.visible = True
         seccion_historial.visible = False
         seccion_detalle.visible = False
+        seccion_preventas.visible = False
+        refrescar_contador_preventas()
+        page.update()
+
+    def mostrar_preventas() -> None:
+        seccion_caja.visible = False
+        seccion_historial.visible = False
+        seccion_detalle.visible = False
+        seccion_preventas.visible = True
+        descarte_franja.visible = False
+        refrescar_lista_preventas()
         page.update()
 
     def mostrar_historial() -> None:
         seccion_caja.visible = False
+        seccion_preventas.visible = False
         seccion_historial.visible = True
         seccion_detalle.visible = False
         refrescar_lista_historial()
@@ -1640,6 +1938,7 @@ def VentasView(page: ft.Page) -> ft.Control:
     def ir_a_detalle_historial(venta_id: int) -> None:
         detalle_venta_id["valor"] = venta_id
         panel_nota_credito.visible = False
+        seccion_preventas.visible = False
         seccion_caja.visible = False
         seccion_historial.visible = False
         seccion_detalle.visible = True
@@ -1674,6 +1973,12 @@ def VentasView(page: ft.Page) -> ft.Control:
             cancelar_venta_click()
         elif tecla == "F9":
             nueva_pestana()
+        elif tecla == "F7":
+            await mostrar_franja_preventa()
+        elif tecla == "F4":
+            await mostrar_franja_presupuesto()
+        elif tecla == "ESCAPE" and preventa_franja.visible:
+            ocultar_franja_preventa()
 
     page.on_keyboard_event = manejar_teclado
 
@@ -1684,7 +1989,7 @@ def VentasView(page: ft.Page) -> ft.Control:
         cliente_nuevo_field.value = t["cliente_nombre_nuevo"]
         cliente_generico_switch.value = t["usar_generico"]
         reconstruir_opciones_cliente(t)
-        iva_field.value = t["iva"]
+        iva_field.value = texto_iva(*ventas_service.condiciones_iva(t["borrador_id"]))
         descuento_total_field.value = t["descuento_total"]
         observacion_field.value = t["observacion"]
         refrescar_contenedor_lineas(t)
@@ -1702,7 +2007,38 @@ def VentasView(page: ft.Page) -> ft.Control:
         construir_boton_medio(m, f"F{idx + 1}" if idx < 6 else None)
         for idx, m in enumerate(estado["medios"])
     ]
-    tickets.append(nuevo_ticket())
-    renderizar_ticket_activo()
+    def abrir_presupuesto(presupuesto_id: int) -> None:
+        """Abre un presupuesto vigente en una pestaña, con sus precios y % de cliente congelados.
+        Desde ahi se cobra (se convierte en venta) o se modifica y se guarda con F4."""
+        idx = next((i for i, t in enumerate(tickets) if t["borrador_id"] == presupuesto_id), None)
+        if idx is not None:
+            estado["activo_idx"] = idx
+            renderizar_ticket_activo()
+            return
+        pr = presupuestos_service.obtener_presupuesto(presupuesto_id)
+        if pr is None or pr["estado"] != "vigente":
+            mostrar_mensaje("Ese presupuesto no esta vigente: renovalo o revisalo desde Presupuestos", aviso=True)
+            return
+        t = abrir_carrito_en_pestana_nueva(
+            pr["cliente_id"], pr["cliente_nombre_nuevo"], pr["usar_cliente_generico"], pr["lista_precio_id"],
+            pr["descuento_total_porcentaje"], pr["observacion"], pr["items"],
+            precios_fijos={i["producto_id"]: i["precio_unitario"] for i in pr["items"] if i["producto_id"] is not None},
+        )
+        t["borrador_id"], t["borrador_tipo"] = pr["id"], "presupuesto"
+        t["borrador_etiqueta"] = f"{pr['numero']} · {pr['cliente_nombre']}"
+        t["descuento_cliente_fijo"] = pr["descuento_cliente_porcentaje"]
+        renderizar_ticket_activo()
+        if pr["avisos"]:
+            mostrar_mensaje("Ojo: " + "; ".join(pr["avisos"]) + ". Se cargo lo que hay.", aviso=True)
+        else:
+            mostrar_mensaje(f"Presupuesto {pr['numero']} abierto con sus precios: cobralo (F12) o modificalo y guardalo (F4)")
 
-    return ft.Column([seccion_caja, seccion_historial, seccion_detalle], expand=True)
+    tickets.append(nuevo_ticket())
+    refrescar_contador_preventas()
+    renderizar_ticket_activo()
+    presupuesto_pedido = getattr(page, "presupuesto_a_abrir", None)
+    if presupuesto_pedido is not None:
+        page.presupuesto_a_abrir = None
+        abrir_presupuesto(presupuesto_pedido)
+
+    return ft.Column([seccion_caja, seccion_preventas, seccion_historial, seccion_detalle], expand=True)

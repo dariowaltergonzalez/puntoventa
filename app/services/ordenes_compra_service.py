@@ -14,7 +14,7 @@ from app.services.exceptions import (
     ProductoNoEncontradoError,
     ProveedorNoEncontradoError,
 )
-from app.shared.money import cantidad_a_entero, entero_a_cantidad, entero_a_precio, precio_a_entero
+from app.shared.money import cantidad_a_entero, entero_a_cantidad, entero_a_porcentaje, entero_a_precio, porcentaje_a_entero, precio_a_entero
 
 
 def _resolver_proveedor(
@@ -105,7 +105,7 @@ def crear_orden_compra(
         proveedor_id=proveedor["id"],
         fecha_creacion=datetime.now().isoformat(),
         fecha_estimada=fecha_estimada,
-        iva_porcentaje=int(iva_porcentaje) if iva_porcentaje is not None else None,
+        iva_porcentaje=_iva_a_entero(iva_porcentaje),
         observacion=(observacion or "").strip() or None,
         items=items_validados,
     )
@@ -134,14 +134,17 @@ def crear_orden_compra_recibida(
     confirmar_recepcion, pero la persistencia va toda en un solo commit."""
     proveedor = _resolver_proveedor(proveedor_id, proveedor_nombre_nuevo, usar_proveedor_generico)
     items_validados = _validar_items(items, permitir_producto_nuevo=True)
-    items_recepcion_validados = recepciones_service.validar_items_recepcion(recepcion_items)
-    monto_a_credito = recepciones_service.calcular_monto_total_entero(items_recepcion_validados) if a_credito else None
+    iva_entero = _iva_a_entero(iva_porcentaje)
+    items_recepcion_validados = recepciones_service.aplicar_costo_efectivo(
+        recepciones_service.validar_items_recepcion(recepcion_items), iva_entero,
+    )
+    monto_a_credito = recepciones_service.calcular_monto_total_entero(items_recepcion_validados, iva_entero) if a_credito else None
 
     resultado = ordenes_compra_repo.crear_con_recepcion_inmediata(
         proveedor_id=proveedor["id"],
         fecha_creacion=datetime.now().isoformat(),
         fecha_estimada=fecha_estimada,
-        iva_porcentaje=int(iva_porcentaje) if iva_porcentaje is not None else None,
+        iva_porcentaje=_iva_a_entero(iva_porcentaje),
         observacion=(observacion or "").strip() or None,
         items=items_validados,
         recepcion_fecha=recepcion_fecha or datetime.now().isoformat(),
@@ -200,7 +203,7 @@ def actualizar_orden_compra(
     items_validados = _validar_items(items)
     ordenes_compra_repo.actualizar_cabecera_y_items(
         orden_compra_id, proveedor["id"], fecha_estimada,
-        int(iva_porcentaje) if iva_porcentaje is not None else None,
+        _iva_a_entero(iva_porcentaje),
         (observacion or "").strip() or None, items_validados,
     )
     log_service.registrar("orden_compra", orden_compra_id, f"Se edito la orden de compra {oc['numero']}")
@@ -235,6 +238,15 @@ def marcar_recibida_manualmente(orden_compra_id: int, motivo: str) -> dict:
     ordenes_compra_repo.marcar_recibida_manualmente(orden_compra_id, observacion_final)
     log_service.registrar("orden_compra", orden_compra_id, f"Se cerro manualmente {oc['numero']}: {motivo}")
     return obtener_orden_compra(orden_compra_id)
+
+
+def _iva_a_entero(iva_porcentaje: Decimal | None) -> int | None:
+    """El IVA del proveedor (lo que figura en su factura), escalado x100. Vacio = sin IVA."""
+    if iva_porcentaje is None:
+        return None
+    if not (0 <= iva_porcentaje <= 100):
+        raise ValueError("El IVA de la orden de compra tiene que estar entre 0 y 100")
+    return porcentaje_a_entero(iva_porcentaje)
 
 
 def _item_a_dict(fila: sqlite3.Row) -> dict:
@@ -272,7 +284,10 @@ def _costos_reales_por_item(orden_compra_id: int) -> dict[int, Decimal]:
 
 
 def _oc_a_dict(fila: sqlite3.Row, items: list[dict]) -> dict:
-    total_estimado = sum((i["cantidad_pedida"] * i["costo_pactado"] for i in items), Decimal("0"))
+    """neto + IVA del proveedor = total estimado de lo que se le va a deber."""
+    neto = sum((i["cantidad_pedida"] * i["costo_pactado"] for i in items), Decimal("0")).quantize(Decimal("1.00"))
+    iva = entero_a_porcentaje(fila["iva_porcentaje"]) if fila["iva_porcentaje"] else Decimal("0")
+    monto_iva = (neto * iva / 100).quantize(Decimal("1.00"))
     return {
         "id": fila["id"],
         "numero": fila["numero"],
@@ -280,11 +295,13 @@ def _oc_a_dict(fila: sqlite3.Row, items: list[dict]) -> dict:
         "estado": fila["estado"],
         "fecha_creacion": fila["fecha_creacion"],
         "fecha_estimada": fila["fecha_estimada"],
-        "iva_porcentaje": fila["iva_porcentaje"],
+        "iva_porcentaje": iva,
         "observacion": fila["observacion"],
         "recibida_en_el_acto": bool(fila["recibida_en_el_acto"]),
         "items": items,
-        "total_estimado": total_estimado,
+        "neto_estimado": neto,
+        "iva_estimado": monto_iva,
+        "total_estimado": neto + monto_iva,
     }
 
 

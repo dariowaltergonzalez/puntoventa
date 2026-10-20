@@ -58,7 +58,8 @@ def aplicar_recepcion(
             'producto_nuevo': {'codigo', 'nombre', 'categoria_id': int|None} | None,  # alta al vuelo
             'descripcion_libre': str | None,                  # item libre, sin stock ni catalogo
             'cantidad_recibida': int,                          # escalado x1000
-            'costo_unitario': int,                             # escalado x100
+            'costo_unitario': int,                             # escalado x100, tal cual lo facturo el proveedor
+            'costo_lote': int,                                 # x100, costo para la ganancia (con IVA si no se recupera)
         }
     Exactamente uno de producto_id / producto_nuevo / descripcion_libre viene cargado por linea.
     """
@@ -80,6 +81,7 @@ def aplicar_recepcion(
         orden_compra_item_id = item.get("orden_compra_item_id")
         cantidad = item["cantidad_recibida"]
         costo_unitario = item["costo_unitario"]
+        costo_lote = item.get("costo_lote", costo_unitario)
         descripcion_libre = item.get("descripcion_libre")
 
         if descripcion_libre is not None:
@@ -101,7 +103,7 @@ def aplicar_recepcion(
 
         producto_id = item.get("producto_id")
         if producto_id is None:
-            producto_id = crear_producto_minimo(conn, item["producto_nuevo"], costo_unitario, proveedor_id_oc)
+            producto_id = crear_producto_minimo(conn, item["producto_nuevo"], costo_lote, proveedor_id_oc)
             productos_creados.append(producto_id)
 
         cursor_lote = conn.execute(
@@ -109,7 +111,7 @@ def aplicar_recepcion(
             INSERT INTO lotes (producto_id, recepcion_id, cantidad_recibida, cantidad_restante, costo_unitario, fecha)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (producto_id, recepcion_id, cantidad, cantidad, costo_unitario, fecha),
+            (producto_id, recepcion_id, cantidad, cantidad, costo_lote, fecha),
         )
         lote_id = cursor_lote.lastrowid
 
@@ -132,7 +134,7 @@ def aplicar_recepcion(
             referencia=numero_oc,
             observacion=observacion_mov,
             lote_id=lote_id,
-            precio_unitario=costo_unitario,
+            precio_unitario=costo_lote,
             conn=conn,
         )
 

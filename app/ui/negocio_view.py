@@ -1,8 +1,10 @@
+from decimal import Decimal
+
 import flet as ft
 
 from app.services import condiciones_iva_service, email_service, negocio_service
 from app.services.exceptions import CorreoNoConfiguradoError, EnvioCorreoError, NegocioNoConfiguradoError
-from app.ui.campos import FILTRO_CUIT, FILTRO_ENTEROS
+from app.ui.campos import FILTRO_CUIT, FILTRO_DECIMALES, FILTRO_ENTEROS, parsear_decimal_ar_opcional
 from app.ui.listados import con_scroll_horizontal
 from app.ui.theme import COLOR_SUCCESS, COLOR_TEXT_SOFT, COLOR_WARNING
 
@@ -30,6 +32,33 @@ def NegocioView(page: ft.Page) -> ft.Control:
                                          helper="La marca: lo que va grande en el membrete")
     ingresos_brutos_field = ft.TextField(label="N° de Ingresos Brutos", width=200)
     inicio_actividades_field = ft.TextField(label="Inicio de actividades (AAAA-MM-DD)", width=260)
+    # IVA: lo usa toda la app (ventas, presupuestos, compras, ganancia). Solo el Responsable
+    # Inscripto cobra IVA; monotributo / exento venden sin IVA y no recuperan el de sus compras.
+    precios_con_iva_switch = ft.Switch(label="El precio de los productos es el precio final (el que paga el cliente)", value=True)
+    alicuota_iva_field = ft.TextField(label="Alicuota de IVA %", width=150, input_filter=FILTRO_DECIMALES)
+    iva_explicacion_texto = ft.Text("", size=12, color=COLOR_TEXT_SOFT)
+
+    def explicar_iva(e: ft.ControlEvent | None = None) -> None:
+        nombre = next((o.text for o in condicion_iva_dropdown.options if o.key == condicion_iva_dropdown.value), "")
+        es_ri = nombre == negocio_service.CONDICION_QUE_COBRA_IVA
+        precios_con_iva_switch.disabled = not es_ri
+        alicuota_iva_field.disabled = not es_ri
+        if not condicion_iva_dropdown.value:
+            iva_explicacion_texto.value = "Elegi la condicion frente al IVA: sin eso la app vende sin IVA y la caja lo avisa."
+        elif not es_ri:
+            iva_explicacion_texto.value = (f"{nombre}: las ventas van sin IVA, y el IVA de las compras se toma como costo "
+                                           "(no se recupera).")
+        elif precios_con_iva_switch.value:
+            iva_explicacion_texto.value = ("El cliente paga el precio del producto, como en el cartel. La app separa adentro "
+                                           "cuanto es del negocio y cuanto es IVA (para la ganancia y el comprobante).")
+        else:
+            iva_explicacion_texto.value = ("Precios '+ IVA' (como un mayorista): a cada venta se le suma el IVA encima "
+                                           "del precio del producto.")
+        if e is not None:
+            page.update()
+
+    condicion_iva_dropdown.on_select = explicar_iva
+    precios_con_iva_switch.on_change = explicar_iva
 
     # ================= Contacto =================
     direccion_field = ft.TextField(label="Calle y numero", expand=True)
@@ -107,6 +136,9 @@ def NegocioView(page: ft.Page) -> ft.Control:
         razon_social_field.value = texto(negocio.get("razon_social"))
         cuit_field.value = texto(negocio.get("cuit"))
         condicion_iva_dropdown.value = texto(negocio.get("condicion_iva_id"))
+        precios_con_iva_switch.value = bool(negocio.get("precios_incluyen_iva", True))
+        alicuota_iva_field.value = texto(negocio.get("alicuota_iva", "21")).replace(".00", "").replace(".", ",")
+        explicar_iva()
         nombre_fantasia_field.value = texto(negocio.get("nombre_fantasia"))
         ingresos_brutos_field.value = texto(negocio.get("ingresos_brutos"))
         inicio_actividades_field.value = texto(negocio.get("inicio_actividades"))
@@ -180,6 +212,8 @@ def NegocioView(page: ft.Page) -> ft.Control:
                 smtp_usuario=smtp_usuario_field.value,
                 smtp_remitente_nombre=smtp_remitente_nombre_field.value,
                 smtp_remitente_email=smtp_remitente_email_field.value,
+                precios_incluyen_iva=precios_con_iva_switch.value,
+                alicuota_iva=parsear_decimal_ar_opcional(alicuota_iva_field.value, "La alicuota de IVA") or Decimal("21"),
             )
             if smtp_password_field.value:
                 negocio_service.guardar_password_smtp(smtp_password_field.value)
@@ -262,6 +296,8 @@ def NegocioView(page: ft.Page) -> ft.Control:
             ft.Text("Datos del negocio", size=20, weight=ft.FontWeight.BOLD),
             titulo_seccion("Identidad legal"),
             ft.Row([razon_social_field, cuit_field, condicion_iva_dropdown], vertical_alignment=ft.CrossAxisAlignment.START),
+            ft.Row([precios_con_iva_switch, alicuota_iva_field, iva_explicacion_texto],
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER, wrap=True),
             ft.Row([nombre_fantasia_field, ingresos_brutos_field, inicio_actividades_field],
                    vertical_alignment=ft.CrossAxisAlignment.START),
             titulo_seccion("Contacto"),

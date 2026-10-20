@@ -1142,3 +1142,93 @@ def _migrar(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_lotes_recepcion_id ON lotes (recepcion_id)")
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA legacy_alter_table = OFF")
+
+    # Fase 5: borradores de venta (pre-ventas; despues tambien presupuestos).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS borradores_venta (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo                        TEXT NOT NULL,             -- 'preventa' | 'presupuesto' (no son ventas: no tocan stock ni plata)
+            nombre                      TEXT NOT NULL,             -- ej. 'Senora con anteojos'
+            numero                      TEXT UNIQUE,               -- solo presupuestos ('P-0001')
+            cliente_id                  INTEGER,
+            cliente_nombre_nuevo        TEXT,
+            usar_cliente_generico       INTEGER NOT NULL DEFAULT 1,
+            lista_precio_id             INTEGER,
+            iva_porcentaje              INTEGER,                   -- escalado x100
+            descuento_total_porcentaje  INTEGER,                   -- escalado x100
+            observacion                 TEXT,
+            estado                      TEXT NOT NULL DEFAULT 'abierta',  -- abierta | convertida | descartada
+            venta_id                    INTEGER,                   -- la venta en que se convirtio
+            motivo_descarte             TEXT,
+            fecha_creacion              TEXT NOT NULL,
+            fecha_actualizacion         TEXT NOT NULL,
+            FOREIGN KEY (cliente_id) REFERENCES clientes (id)
+                ON DELETE SET NULL
+                ON UPDATE CASCADE,
+            FOREIGN KEY (lista_precio_id) REFERENCES listas_precios (id)
+                ON DELETE SET NULL
+                ON UPDATE CASCADE,
+            FOREIGN KEY (venta_id) REFERENCES ventas (id)
+                ON DELETE SET NULL
+                ON UPDATE CASCADE,
+            CHECK (tipo IN ('preventa', 'presupuesto')),
+            CHECK (estado IN ('abierta', 'convertida', 'descartada')),
+            CHECK (usar_cliente_generico IN (0, 1)),
+            CHECK (estado != 'convertida' OR venta_id IS NOT NULL)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS borrador_venta_items (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            borrador_id                 INTEGER NOT NULL,
+            producto_id                 INTEGER,                   -- NULL si es item libre
+            descripcion_libre           TEXT,
+            cantidad                    INTEGER NOT NULL,          -- escalado x1000
+            precio_unitario             INTEGER,                   -- escalado x100 (en una pre-venta, solo los items libres)
+            descuento_item_porcentaje   INTEGER,                   -- escalado x100
+            FOREIGN KEY (borrador_id) REFERENCES borradores_venta (id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE,
+            FOREIGN KEY (producto_id) REFERENCES productos (id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE,
+            CHECK (cantidad > 0),
+            CHECK (precio_unitario IS NULL OR precio_unitario >= 0),
+            CHECK ((producto_id IS NULL) != (descripcion_libre IS NULL))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_borradores_venta_tipo_fecha ON borradores_venta (tipo, fecha_creacion)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_borrador_venta_items_borrador_id ON borrador_venta_items (borrador_id)")
+    # Presupuestos: validez y % fijo del cliente congelado al presupuestar.
+    columnas_borradores = {fila["name"] for fila in conn.execute("PRAGMA table_info(borradores_venta)")}
+    if "fecha_validez" not in columnas_borradores:
+        conn.execute("ALTER TABLE borradores_venta ADD COLUMN fecha_validez TEXT")
+    if "descuento_cliente_porcentaje" not in columnas_borradores:
+        conn.execute("ALTER TABLE borradores_venta ADD COLUMN descuento_cliente_porcentaje INTEGER")
+    # Presupuestos: marca de las lineas cuyo precio el dueno cambio a mano (no es el de lista).
+    columnas_borrador_items = {fila["name"] for fila in conn.execute("PRAGMA table_info(borrador_venta_items)")}
+    if "precio_manual" not in columnas_borrador_items:
+        conn.execute("ALTER TABLE borrador_venta_items ADD COLUMN precio_manual INTEGER NOT NULL DEFAULT 0")
+
+    # IVA en todo el circuito: configuracion del negocio + cada venta/presupuesto sabe si sus
+    # precios ya incluian IVA. De paso, el % de IVA de ventas y OC pasa a guardarse escalado x100
+    # (como los demas porcentajes): asi admite alicuotas como 10,5. Todo en un solo paso: la
+    # columna nueva de 'negocio' marca que esta conversion ya se hizo (nunca se repite).
+    columnas_negocio = {fila["name"] for fila in conn.execute("PRAGMA table_info(negocio)")}
+    if "alicuota_iva" not in columnas_negocio:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute("ALTER TABLE negocio ADD COLUMN precios_incluyen_iva INTEGER NOT NULL DEFAULT 0")
+            conn.execute("ALTER TABLE negocio ADD COLUMN alicuota_iva INTEGER NOT NULL DEFAULT 2100")
+            conn.execute("ALTER TABLE ventas ADD COLUMN precios_con_iva INTEGER NOT NULL DEFAULT 0")
+            conn.execute("ALTER TABLE borradores_venta ADD COLUMN precios_con_iva INTEGER NOT NULL DEFAULT 0")
+            conn.execute("UPDATE ventas SET iva_porcentaje = iva_porcentaje * 100 WHERE iva_porcentaje IS NOT NULL")
+            conn.execute("UPDATE ordenes_compra SET iva_porcentaje = iva_porcentaje * 100 WHERE iva_porcentaje IS NOT NULL")
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise

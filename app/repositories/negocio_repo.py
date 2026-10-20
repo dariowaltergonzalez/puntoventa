@@ -6,6 +6,7 @@ CAMPOS_NEGOCIO = (
     "razon_social", "cuit", "condicion_iva_id", "nombre_fantasia", "ingresos_brutos", "inicio_actividades",
     "direccion", "ciudad", "provincia", "codigo_postal", "telefono", "email", "web",
     "smtp_servidor", "smtp_puerto", "smtp_seguridad", "smtp_usuario", "smtp_remitente_nombre", "smtp_remitente_email",
+    "precios_incluyen_iva", "alicuota_iva",
 )
 
 
