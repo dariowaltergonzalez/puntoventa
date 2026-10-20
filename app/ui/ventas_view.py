@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from decimal import Decimal
 
@@ -63,6 +64,11 @@ ANCHO_PRECIO = 110
 ANCHO_DESC = 78
 ANCHO_SUBTOTAL = 118
 ANCHO_ACCION = 44
+ANCHO_COBRO_PANEL = 920
+MARGEN_COBRO_PANEL = 16
+ALTO_COBRO_PANEL_COMPLETO = 440
+ALTO_RESERVADO_VENTAS = 200
+TAM_TEXTO_COBRO = 12
 
 
 def _estilizar_dropdown_rail(campo: ft.Dropdown) -> None:
@@ -838,27 +844,27 @@ def VentasView(page: ft.Page) -> ft.Control:
         refrescar_tabs()
 
     # ================= PANEL DE COBRO (overlay no-modal, Stack + visible) =================
-    cobro_items_texto = ft.Text("", size=11.5, color=COLOR_TEXT_SOFT)
-    cobro_total_texto = ft.Text("$ 0,00", size=36, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT_STRONG)
-    cobro_desglose_texto = ft.Text("", size=11, color=COLOR_TEXT_SOFT)
-    cobro_restante_texto = ft.Text("", size=12.5, weight=ft.FontWeight.BOLD)
-    medios_grid = ft.Row([], spacing=10, wrap=True)
+    cobro_items_texto = ft.Text("", size=TAM_TEXTO_COBRO, color=COLOR_TEXT_SOFT)
+    cobro_total_texto = ft.Text("$ 0,00", size=30, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT_STRONG)
+    cobro_desglose_texto = ft.Text("", size=TAM_TEXTO_COBRO, color=COLOR_TEXT_SOFT)
+    cobro_restante_texto = ft.Text("", size=TAM_TEXTO_COBRO, weight=ft.FontWeight.BOLD)
+    medios_grid = ft.Row([], spacing=8, run_spacing=8, wrap=True)
     recibido_field = ft.TextField(label="El cliente entrego", width=220, input_filter=FILTRO_DECIMALES)
     aplicar_mascara_moneda(recibido_field)
     vuelto_texto = ft.Text("Vuelto: $ 0,00", size=16, weight=ft.FontWeight.BOLD, color=COLOR_SUCCESS)
     efectivo_box = ft.Row([recibido_field, vuelto_texto], visible=False, spacing=20,
                            vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
-    cheque_banco_field = ft.TextField(label="Banco", width=160)
-    cheque_librador_field = ft.TextField(label="Librador", width=180)
-    cheque_numero_field = ft.TextField(label="Numero (opcional)", width=140)
-    cheque_cuit_field = ft.TextField(label="CUIT librador (opcional)", width=160)
-    cheque_fecha_pago_field = ft.TextField(label="Fecha de pago (AAAA-MM-DD)", width=180)
+    cheque_banco_field = ft.TextField(label="Banco", width=150)
+    cheque_librador_field = ft.TextField(label="Librador", width=170)
+    cheque_numero_field = ft.TextField(label="Numero (opc.)", width=150)
+    cheque_cuit_field = ft.TextField(label="CUIT (opc.)", width=130)
+    cheque_fecha_pago_field = ft.TextField(label="Fecha pago (AAAA-MM-DD)", width=210)
     cheque_confirmar_button = ft.ElevatedButton("Confirmar cheque")
     cheque_box = ft.Column(
         [
-            ft.Row([cheque_banco_field, cheque_librador_field], spacing=12),
-            ft.Row([cheque_numero_field, cheque_cuit_field, cheque_fecha_pago_field], spacing=12),
+            ft.Row([cheque_banco_field, cheque_librador_field, cheque_numero_field, cheque_cuit_field,
+                    cheque_fecha_pago_field], spacing=8, run_spacing=8, wrap=True),
             cheque_confirmar_button,
         ],
         visible=False, spacing=10,
@@ -872,40 +878,54 @@ def VentasView(page: ft.Page) -> ft.Control:
 
     cobro_atajos_texto = ft.Text("F1-F4 elige el medio de pago  ·  ESC vuelve al carrito", size=10.5, color=COLOR_TEXT_SOFT)
 
+    cobro_panel = ft.Container(
+        bgcolor=ft.Colors.WHITE, border_radius=18, padding=16, width=ANCHO_COBRO_PANEL,
+        content=ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Column([ft.Text("Cobrar venta", size=17, weight=ft.FontWeight.BOLD), cobro_items_texto],
+                                   expand=1, spacing=2),
+                        ft.Column([ft.Text("TOTAL A COBRAR", size=TAM_TEXTO_COBRO, color=COLOR_TEXT_SOFT), cobro_total_texto],
+                                   expand=1, spacing=0),
+                        ft.Column([cobro_desglose_texto, cobro_restante_texto], expand=1, spacing=2),
+                        btn_cerrar_cobro,
+                    ],
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=16,
+                ),
+                medios_grid,
+                cobro_atajos_texto,
+                efectivo_box,
+                cheque_box,
+                pagos_aplicados_column,
+                ft.Row(
+                    [ft.OutlinedButton("Volver al carrito", expand=True, on_click=lambda e: cerrar_cobro()),
+                     btn_confirmar_cobro],
+                    spacing=10,
+                ),
+            ],
+            spacing=8, tight=True,
+        ),
+    )
+    cobro_columna = cobro_panel.content
+
+    def ajustar_panel_cobro() -> None:
+        ancho = (page.width or 0) - 2 * MARGEN_COBRO_PANEL
+        alto = (page.height or 0) - ALTO_RESERVADO_VENTAS - 2 * MARGEN_COBRO_PANEL
+        if ancho > 0:
+            cobro_panel.width = min(ANCHO_COBRO_PANEL, ancho)
+        if 0 < alto < ALTO_COBRO_PANEL_COMPLETO:
+            cobro_panel.height = alto
+            cobro_columna.scroll = ft.ScrollMode.AUTO
+        else:
+            cobro_panel.height = None
+            cobro_columna.scroll = None
+
     cobro_overlay = ft.Container(
         left=0, top=0, right=0, bottom=0, visible=False,
         bgcolor=ft.Colors.with_opacity(0.45, "#0a201e"),
         alignment=ft.Alignment.CENTER,
-        content=ft.Container(
-            bgcolor=ft.Colors.WHITE, border_radius=18, padding=20, width=560,
-            content=ft.Column(
-                [
-                    ft.Row(
-                        [
-                            ft.Column([ft.Text("Cobrar venta", size=17, weight=ft.FontWeight.BOLD), cobro_items_texto],
-                                       expand=True, spacing=2),
-                            btn_cerrar_cobro,
-                        ]
-                    ),
-                    ft.Column(
-                        [ft.Text("TOTAL A COBRAR", size=11, color=COLOR_TEXT_SOFT), cobro_total_texto,
-                         cobro_desglose_texto, cobro_restante_texto],
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2,
-                    ),
-                    medios_grid,
-                    cobro_atajos_texto,
-                    efectivo_box,
-                    cheque_box,
-                    pagos_aplicados_column,
-                    ft.Row(
-                        [ft.OutlinedButton("Volver al carrito", expand=True, on_click=lambda e: cerrar_cobro()),
-                         btn_confirmar_cobro],
-                        spacing=10,
-                    ),
-                ],
-                spacing=12, tight=True,
-            ),
-        ),
+        content=cobro_panel,
     )
     btn_confirmar_cobro.expand = True
 
@@ -954,6 +974,7 @@ def VentasView(page: ft.Page) -> ft.Control:
         cheque_box.visible = False
         limpiar_campos_cheque()
         refrescar_cobro()
+        ajustar_panel_cobro()
         cobro_overlay.visible = True
         page.update()
 
@@ -967,6 +988,12 @@ def VentasView(page: ft.Page) -> ft.Control:
         cheque_numero_field.value = ""
         cheque_cuit_field.value = ""
         cheque_fecha_pago_field.value = datetime.now().strftime("%Y-%m-%d")
+
+    async def enfocar_confirmar_cobro() -> None:
+        # Pausa corta: el campo que acaba de ocultarse (efectivo/cheque) le quita el foco al
+        # redibujarse; si se pide el foco al boton antes, se pierde.
+        await asyncio.sleep(0.08)
+        await btn_confirmar_cobro.focus()
 
     async def elegir_medio(medio: dict) -> None:
         t = activo()
@@ -1000,7 +1027,7 @@ def VentasView(page: ft.Page) -> ft.Control:
         if not btn_confirmar_cobro.disabled:
             # Queda cubierto con un solo medio -- foco directo al boton para que un Enter mas
             # lo confirme, sin tener que soltar el teclado para clickearlo.
-            await btn_confirmar_cobro.focus()
+            await enfocar_confirmar_cobro()
 
     def construir_boton_medio(m: dict, atajo: str | None) -> ft.Control:
         # ElevatedButton (no Container+ink) a proposito: es un control real de formulario,
@@ -1014,15 +1041,16 @@ def VentasView(page: ft.Page) -> ft.Control:
 
         return ft.ElevatedButton(
             bgcolor=COLOR_ACTION_WASH if es_cta else COLOR_ACCENT_WASH,
-            width=136, height=88,
+            width=120, height=84,
+            style=ft.ButtonStyle(padding=ft.Padding.symmetric(horizontal=2, vertical=0)),
             on_click=click_medio,
             content=ft.Column(
                 [
                     ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET if es_cta else ft.Icons.PAYMENTS, color=color_texto, size=22),
                     ft.Text(m["nombre"], size=12, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.CENTER, color=color_texto),
-                    ft.Text(atajo, size=9.5, color=color_texto) if atajo else ft.Container(height=0),
+                    ft.Text(atajo, size=9, color=color_texto) if atajo else ft.Container(height=0),
                 ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=3, tight=True,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=1, tight=True,
             ),
         )
 
@@ -1066,7 +1094,7 @@ def VentasView(page: ft.Page) -> ft.Control:
         refrescar_cobro()
         page.update()
         if not btn_confirmar_cobro.disabled:
-            await btn_confirmar_cobro.focus()
+            await enfocar_confirmar_cobro()
 
     recibido_field.on_change = on_recibido_change
     recibido_field.on_submit = confirmar_efectivo
@@ -1099,7 +1127,7 @@ def VentasView(page: ft.Page) -> ft.Control:
         refrescar_cobro()
         page.update()
         if not btn_confirmar_cobro.disabled:
-            await btn_confirmar_cobro.focus()
+            await enfocar_confirmar_cobro()
 
     async def submit_cheque_banco(e: ft.ControlEvent) -> None:
         await cheque_librador_field.focus()
