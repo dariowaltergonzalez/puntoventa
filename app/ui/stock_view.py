@@ -4,6 +4,7 @@ from app.services import categorias_service, lotes_service, movimientos_service
 from app.shared.money import formatear_cantidad, formatear_precio
 from app.ui.listados import con_scroll_horizontal
 from app.ui.theme import COLOR_DANGER
+from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
 
 
 def StockView(page: ft.Page) -> ft.Control:
@@ -12,7 +13,7 @@ def StockView(page: ft.Page) -> ft.Control:
         options=[ft.dropdown.Option(key="", text="Todas")],
         value="",
     )
-    buscador_field = ft.TextField(label="Buscar por nombre o codigo", expand=True)
+    buscador_field = campo_buscar("Nombre o codigo")
 
     contenedor_filas = ft.Column([])
 
@@ -117,13 +118,13 @@ def StockView(page: ft.Page) -> ft.Control:
 
     return ft.Column(
         [
-            ft.Text("Stock", size=20, weight=ft.FontWeight.BOLD),
-            ft.Row([categoria_dropdown, ft.ElevatedButton("Recalcular stock", on_click=recalcular)]),
-            ft.Row([buscador_field]),
+            encabezado_pantalla("Stock", "Cuanto hay de cada producto. Abri una fila para ver sus lotes y su costo."),
+            ft.Row([categoria_dropdown, buscador_field, ft.ElevatedButton("Recalcular stock", on_click=recalcular)],
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
             resultado_texto,
-            encabezado,
-            contenedor_filas,
+            tarjeta(encabezado, contenedor_filas),
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )

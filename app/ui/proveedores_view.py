@@ -3,6 +3,7 @@ import flet as ft
 from app.services import proveedores_service
 from app.services.exceptions import ProveedorDuplicadoError, ProveedorNoEncontradoError
 from app.ui.listados import con_scroll_horizontal
+from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
 
 
 def ProveedoresView(page: ft.Page) -> ft.Control:
@@ -17,7 +18,7 @@ def ProveedoresView(page: ft.Page) -> ft.Control:
     guardar_button_texto = ft.Text("Agregar proveedor")
     guardar_button = ft.ElevatedButton(content=guardar_button_texto)
     cancelar_button = ft.TextButton("Cancelar", visible=False)
-    buscador_field = ft.TextField(label="Buscar por nombre", expand=True)
+    buscador_field = campo_buscar("Nombre del proveedor")
 
     tabla = ft.DataTable(
         columns=[
@@ -143,14 +144,18 @@ def ProveedoresView(page: ft.Page) -> ft.Control:
 
     return ft.Column(
         [
-            ft.Text("Proveedores", size=20, weight=ft.FontWeight.BOLD),
-            ft.Row([nombre_field, cuit_field, contacto_field]),
-            ft.Row([telefono_field, email_field, direccion_field, activo_switch]),
-            ft.Row([observaciones_field]),
-            ft.Row([guardar_button, cancelar_button]),
-            ft.Row([buscador_field]),
-            con_scroll_horizontal(tabla),
+            encabezado_pantalla("Proveedores", "A quienes les compra el negocio."),
+            tarjeta(
+                ft.Row([nombre_field, cuit_field, contacto_field]),
+                ft.Row([telefono_field, email_field, direccion_field, activo_switch]),
+                ft.Row([observaciones_field]),
+                ft.Row([guardar_button, cancelar_button]),
+                titulo="Datos del proveedor",
+            ),
+            buscador_field,
+            tarjeta(con_scroll_horizontal(tabla)),
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )

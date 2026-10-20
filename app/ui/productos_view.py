@@ -11,6 +11,7 @@ from app.services.exceptions import (
 )
 from app.shared.money import formatear_cantidad, formatear_precio
 from app.ui.listados import Paginador, con_scroll_horizontal
+from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
 
 
 def ProductosView(page: ft.Page) -> ft.Control:
@@ -29,7 +30,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
     guardar_button_texto = ft.Text("Agregar producto")
     guardar_button = ft.ElevatedButton(content=guardar_button_texto)
     cancelar_button = ft.TextButton("Cancelar", visible=False)
-    buscador_field = ft.TextField(label="Buscar por nombre o codigo", expand=True)
+    buscador_field = campo_buscar("Nombre o codigo")
 
     tabla = ft.DataTable(
         columns=[
@@ -227,15 +228,18 @@ def ProductosView(page: ft.Page) -> ft.Control:
 
     encabezado = ft.Column(
         [
-            ft.Text("Productos", size=20, weight=ft.FontWeight.BOLD),
-            ft.Row([codigo_field, nombre_field, unidad_field]),
-            ft.Row([categoria_dropdown, precio_costo_field, precio_venta_field, stock_minimo_field, activo_switch]),
-            ft.Row([marca_field, codigo_barra_field, proveedor_dropdown]),
-            ft.Row([descripcion_field]),
-            ft.Row([guardar_button, cancelar_button]),
-            ft.Row([buscador_field]),
+            encabezado_pantalla("Productos", "Los articulos que vende el negocio, con su costo, precio y stock minimo."),
+            tarjeta(
+                ft.Row([codigo_field, nombre_field, unidad_field]),
+                ft.Row([categoria_dropdown, precio_costo_field, precio_venta_field, stock_minimo_field, activo_switch]),
+                ft.Row([marca_field, codigo_barra_field, proveedor_dropdown]),
+                ft.Row([descripcion_field]),
+                ft.Row([guardar_button, cancelar_button]),
+                titulo="Datos del producto",
+            ),
+            buscador_field,
         ],
-        spacing=10,
+        spacing=ESPACIO_PANTALLA,
     )
 
     zona_tabla = ft.Column(
@@ -250,4 +254,4 @@ def ProductosView(page: ft.Page) -> ft.Control:
 
     # encabezado sin scroll propio (siempre visible) + zona_tabla con su scroll aparte, asi el
     # formulario no se va de la pantalla al desplazarse por una lista larga de productos.
-    return ft.Column([encabezado, zona_tabla], expand=True, spacing=10)
+    return ft.Column([encabezado, tarjeta(zona_tabla, expand=True)], expand=True, spacing=ESPACIO_PANTALLA)

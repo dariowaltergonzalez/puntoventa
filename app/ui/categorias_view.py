@@ -3,6 +3,7 @@ import flet as ft
 from app.services import categorias_service
 from app.services.exceptions import CategoriaDuplicadaError, CategoriaNoEncontradaError
 from app.ui.listados import con_scroll_horizontal
+from app.ui.componentes import ESPACIO_PANTALLA, encabezado_pantalla, tarjeta
 
 
 def CategoriasView(page: ft.Page) -> ft.Control:
@@ -79,10 +80,11 @@ def CategoriasView(page: ft.Page) -> ft.Control:
 
     return ft.Column(
         [
-            ft.Text("Categorias", size=20, weight=ft.FontWeight.BOLD),
-            ft.Row([nombre_field, guardar_button, cancelar_button]),
-            con_scroll_horizontal(tabla),
+            encabezado_pantalla("Categorias", "Agrupan los productos (Limpieza, Perfumeria, Descartables...)."),
+            tarjeta(ft.Row([nombre_field, guardar_button, cancelar_button]), titulo="Datos de la categoria"),
+            tarjeta(con_scroll_horizontal(tabla)),
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )

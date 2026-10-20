@@ -18,6 +18,7 @@ from app.ui.campos import (
     parsear_decimal_ar_opcional,
 )
 from app.ui.listados import Paginador, coincide_exacto, coincide_texto, con_scroll_horizontal, filtrar
+from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
 
 EXCEPCIONES_NEGOCIO = (
     ClienteDuplicadoError, ClienteNoEncontradoError, CondicionIvaNoEncontradaError,
@@ -48,7 +49,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
             raise ValueError(f"{etiqueta} invalido") from None
 
     # ================= SECCION LISTA =================
-    buscador_field = ft.TextField(label="Buscar por razon social o nombre de fantasia", expand=True)
+    buscador_field = campo_buscar("Razon social o nombre de fantasia")
     activo_filtro_dropdown = ft.Dropdown(
         label="Filtrar por estado", width=180, value="",
         options=[ft.dropdown.Option(key="", text="Todos"), ft.dropdown.Option(key="1", text="Activos"),
@@ -97,14 +98,12 @@ def ClientesView(page: ft.Page) -> ft.Control:
     nuevo_cliente_button.on_click = lambda e: ir_a_formulario(None)
 
     seccion_lista = ft.Column([
-        ft.Text("Clientes", size=20, weight=ft.FontWeight.BOLD),
-        ft.Row([buscador_field, activo_filtro_dropdown, nuevo_cliente_button]),
-        con_scroll_horizontal(tabla_lista),
-        paginador.controles,
-    ])
+        ft.Row([buscador_field, activo_filtro_dropdown, nuevo_cliente_button], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        tarjeta(con_scroll_horizontal(tabla_lista), paginador.controles),
+    ], spacing=ESPACIO_PANTALLA)
 
     # ================= SECCION FORMULARIO =================
-    form_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
+    form_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     razon_social_field = ft.TextField(label="Razon social", expand=True)
     nombre_fantasia_field = ft.TextField(label="Nombre de fantasia (opcional)", expand=True)
     dni_field = ft.TextField(label="DNI (opcional)", width=150, input_filter=FILTRO_ENTEROS)
@@ -221,16 +220,18 @@ def ClientesView(page: ft.Page) -> ft.Control:
 
     seccion_formulario = ft.Column(
         [
-            form_titulo,
-            ft.Row([razon_social_field, nombre_fantasia_field]),
-            ft.Row([dni_field, cuit_field, contacto_principal_field]),
-            ft.Row([telefono_field, email_field]),
-            ft.Row([direccion_field, ciudad_field, provincia_field, codigo_postal_field]),
-            ft.Row([condicion_iva_dropdown, plazo_pago_field, porcentaje_descuento_field]),
-            ft.Row([limite_credito_field, avisar_limite_switch, bloquear_limite_switch, tasa_mora_field]),
-            ft.Row([observacion_field]),
-            ft.Row([activo_switch]),
-            ft.Row([guardar_form_button, cancelar_form_button]),
+            tarjeta(
+                ft.Row([razon_social_field, nombre_fantasia_field]),
+                ft.Row([dni_field, cuit_field, contacto_principal_field]),
+                ft.Row([telefono_field, email_field]),
+                ft.Row([direccion_field, ciudad_field, provincia_field, codigo_postal_field]),
+                ft.Row([condicion_iva_dropdown, plazo_pago_field, porcentaje_descuento_field]),
+                ft.Row([limite_credito_field, avisar_limite_switch, bloquear_limite_switch, tasa_mora_field]),
+                ft.Row([observacion_field]),
+                ft.Row([activo_switch]),
+                ft.Row([guardar_form_button, cancelar_form_button]),
+                titulo=form_titulo,
+            ),
         ],
         visible=False,
         scroll=ft.ScrollMode.AUTO,
@@ -238,7 +239,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
 
     # ================= SECCION DETALLE =================
     detalle_cliente_id: int | None = None
-    detalle_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
+    detalle_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     detalle_info = ft.Text("")
     editar_button = ft.ElevatedButton("Editar")
     volver_button = ft.ElevatedButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
@@ -389,19 +390,22 @@ def ClientesView(page: ft.Page) -> ft.Control:
 
     seccion_detalle = ft.Column(
         [
-            detalle_titulo,
-            detalle_info,
-            ft.Row([editar_button, volver_button]),
-            ft.Text("Contactos auxiliares", weight=ft.FontWeight.BOLD),
-            con_scroll_horizontal(tabla_contactos),
-            ft.Row([contacto_nombre_field, contacto_sector_field, contacto_email_field, contacto_telefono_field,
-                    contacto_principal_switch, agregar_contacto_button]),
-            ft.Text("Listas de precios asignadas (por orden de prioridad)", weight=ft.FontWeight.BOLD),
-            con_scroll_horizontal(tabla_listas_cliente),
-            ft.Row([listas_dropdown, agregar_lista_button]),
+            tarjeta(detalle_info, ft.Row([editar_button, volver_button]), titulo=detalle_titulo),
+            tarjeta(
+                con_scroll_horizontal(tabla_contactos),
+                ft.Row([contacto_nombre_field, contacto_sector_field, contacto_email_field, contacto_telefono_field,
+                        contacto_principal_switch, agregar_contacto_button]),
+                titulo="Contactos auxiliares",
+            ),
+            tarjeta(
+                con_scroll_horizontal(tabla_listas_cliente),
+                ft.Row([listas_dropdown, agregar_lista_button]),
+                titulo="Listas de precios asignadas", subtitulo="Por orden de prioridad.",
+            ),
         ],
         visible=False,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )
 
     # ================= NAVEGACION =================
@@ -439,7 +443,9 @@ def ClientesView(page: ft.Page) -> ft.Control:
     refrescar_lista()
 
     return ft.Column(
-        [seccion_lista, seccion_formulario, seccion_detalle],
+        [encabezado_pantalla("Clientes", "Los clientes del negocio: datos, condicion de IVA, cuenta corriente y listas de precios."),
+         seccion_lista, seccion_formulario, seccion_detalle],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )

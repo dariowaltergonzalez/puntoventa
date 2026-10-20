@@ -12,6 +12,7 @@ from app.services.exceptions import (
 from app.shared.money import formatear_precio, formatear_porcentaje
 from app.ui.campos import FILTRO_DECIMALES_CON_SIGNO, aplicar_mascara_moneda, parsear_decimal_ar_opcional
 from app.ui.listados import con_scroll_horizontal
+from app.ui.componentes import ESPACIO_PANTALLA, encabezado_pantalla, tarjeta
 
 EXCEPCIONES_NEGOCIO = (
     CategoriaNoEncontradaError, ListaPrecioDuplicadaError, ListaPrecioNoEncontradaError,
@@ -58,13 +59,12 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
     nueva_lista_button.on_click = lambda e: ir_a_formulario(None)
 
     seccion_lista = ft.Column([
-        ft.Text("Listas de precios", size=20, weight=ft.FontWeight.BOLD),
         ft.Row([nueva_lista_button]),
-        con_scroll_horizontal(tabla_lista),
-    ])
+        tarjeta(con_scroll_horizontal(tabla_lista)),
+    ], spacing=ESPACIO_PANTALLA)
 
     # ================= SECCION FORMULARIO =================
-    form_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
+    form_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     nombre_field = ft.TextField(label="Nombre", width=250)
     porcentaje_general_field = ft.TextField(
         label="% general (opcional)", width=200,
@@ -116,17 +116,19 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
 
     seccion_formulario = ft.Column(
         [
-            form_titulo,
-            ft.Row([nombre_field, porcentaje_general_field]),
-            ft.Row([activo_switch]),
-            ft.Row([guardar_form_button, cancelar_form_button]),
+            tarjeta(
+                ft.Row([nombre_field, porcentaje_general_field]),
+                ft.Row([activo_switch]),
+                ft.Row([guardar_form_button, cancelar_form_button]),
+                titulo=form_titulo,
+            ),
         ],
         visible=False,
     )
 
     # ================= SECCION DETALLE =================
     detalle_lista_id: int | None = None
-    detalle_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
+    detalle_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     detalle_info = ft.Text("")
     editar_button = ft.ElevatedButton("Editar")
     volver_button = ft.ElevatedButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
@@ -232,18 +234,21 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
 
     seccion_detalle = ft.Column(
         [
-            detalle_titulo,
-            detalle_info,
-            ft.Row([editar_button, volver_button]),
-            ft.Text("% especial por categoria (pisa el % general para esa categoria)", weight=ft.FontWeight.BOLD),
-            con_scroll_horizontal(tabla_categorias),
-            ft.Row([categoria_dropdown, categoria_porcentaje_field, agregar_categoria_button]),
-            ft.Text("Precio manual por producto (pisa todo lo demas para ese producto)", weight=ft.FontWeight.BOLD),
-            con_scroll_horizontal(tabla_productos),
-            ft.Row([producto_dropdown, producto_precio_field, agregar_producto_button]),
+            tarjeta(detalle_info, ft.Row([editar_button, volver_button]), titulo=detalle_titulo),
+            tarjeta(
+                con_scroll_horizontal(tabla_categorias),
+                ft.Row([categoria_dropdown, categoria_porcentaje_field, agregar_categoria_button]),
+                titulo="% especial por categoria", subtitulo="Pisa el % general para esa categoria.",
+            ),
+            tarjeta(
+                con_scroll_horizontal(tabla_productos),
+                ft.Row([producto_dropdown, producto_precio_field, agregar_producto_button]),
+                titulo="Precio manual por producto", subtitulo="Pisa todo lo demas para ese producto.",
+            ),
         ],
         visible=False,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )
 
     # ================= NAVEGACION =================
@@ -275,7 +280,9 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
     refrescar_lista()
 
     return ft.Column(
-        [seccion_lista, seccion_formulario, seccion_detalle],
+        [encabezado_pantalla("Listas de precios", "Precios distintos para distintos clientes: un % general, por categoria o a mano por producto."),
+         seccion_lista, seccion_formulario, seccion_detalle],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )

@@ -65,4 +65,11 @@ def theme_claro() -> ft.Theme:
         button_theme=ft.ButtonTheme(
             style=ft.ButtonStyle(bgcolor=COLOR_ACCENT, color="#ffffff"),
         ),
+        # Campos y botones un poco mas bajos en todas las pantallas (antes cada una elegia
+        # dense=True o no, y se veian distintas).
+        visual_density=ft.VisualDensity.COMPACT,
+        data_table_theme=ft.DataTableTheme(
+            heading_text_style=ft.TextStyle(size=13, weight=ft.FontWeight.W_600, color=COLOR_TEXT_SOFT),
+            data_text_style=ft.TextStyle(size=13.5, color=COLOR_TEXT),
+        ),
     )

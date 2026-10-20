@@ -28,7 +28,13 @@ origen.close()
 connection_module.DB_PATH = DB_PATH_TEST
 
 from app.services import clientes_service, medios_pago_service, presupuestos_service, productos_service, ventas_service
+from app.services import condiciones_iva_service, negocio_service
 from app.services.exceptions import PresupuestoNoDisponibleError
+
+# Las cuentas de abajo son sin IVA: la copia se configura como Monotributista, sin importar
+# lo que tenga la base real (el IVA en presupuestos lo cubre verificar_iva.py).
+negocio_service.guardar_negocio("Negocio", "20-12345678-9", condicion_iva_id={
+    c["nombre"]: c["id"] for c in condiciones_iva_service.listar_condiciones_iva()}["Monotributista"])
 
 fallas = []
 

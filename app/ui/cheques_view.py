@@ -15,6 +15,7 @@ from app.shared.money import formatear_precio
 from app.ui.campos import FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
 from app.ui.listados import Paginador, coincide_texto, coincide_exacto, con_scroll_horizontal, filtrar
 from app.ui.theme import COLOR_DANGER, COLOR_SUCCESS, COLOR_TEXT_SOFT, COLOR_WARNING
+from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
 
 EXCEPCIONES_NEGOCIO = (
     CargoNoEncontradoError, ChequeEstadoInvalidoError, ChequeNoEncontradoError,
@@ -68,7 +69,7 @@ def ChequesView(page: ft.Page) -> ft.Control:
             ft.dropdown.Option(key=k, text=v) for k, v in ORIGEN_LABEL.items()
         ],
     )
-    buscador_field = ft.TextField(label="Buscar por banco, librador o numero", expand=True)
+    buscador_field = campo_buscar("Banco, librador o numero")
 
     contadores_texto = ft.Text("", size=13, color=COLOR_TEXT_SOFT)
 
@@ -129,8 +130,8 @@ def ChequesView(page: ft.Page) -> ft.Control:
     cancelar_recibido_button.on_click = lambda e: mostrar_lista()
 
     seccion_form_recibido = ft.Column(
-        [
-            ft.Text("Nuevo cheque recibido (para saldar una cuenta corriente vieja)", size=16, weight=ft.FontWeight.BOLD),
+        [tarjeta(
+            ft.Text("Nuevo cheque recibido (para saldar una cuenta corriente vieja)", size=15, weight=ft.FontWeight.BOLD),
             ft.Text(
                 "Se aplica automaticamente a los cargos abiertos mas viejos de ese cliente (igual "
                 "que cualquier pago de cuenta corriente). Para un cheque que paga una venta nueva, "
@@ -142,7 +143,7 @@ def ChequesView(page: ft.Page) -> ft.Control:
             ft.Row([recibido_monto_field, recibido_fecha_field]),
             ft.Row([recibido_observacion_field]),
             ft.Row([guardar_recibido_button, cancelar_recibido_button]),
-        ],
+        )],
         visible=False, scroll=ft.ScrollMode.AUTO,
     )
 
@@ -197,8 +198,8 @@ def ChequesView(page: ft.Page) -> ft.Control:
     cancelar_propio_button.on_click = lambda e: mostrar_lista()
 
     seccion_form_propio = ft.Column(
-        [
-            ft.Text("Nuevo cheque propio (para pagarle a un proveedor)", size=16, weight=ft.FontWeight.BOLD),
+        [tarjeta(
+            ft.Text("Nuevo cheque propio (para pagarle a un proveedor)", size=15, weight=ft.FontWeight.BOLD),
             ft.Text(
                 "Nace directamente entregado al proveedor -- nunca pasa por 'en cartera', porque "
                 "nunca lo recibimos nosotros. Se aplica a los cargos abiertos mas viejos de ese "
@@ -211,7 +212,7 @@ def ChequesView(page: ft.Page) -> ft.Control:
             ft.Row([propio_monto_field, propio_fecha_field]),
             ft.Row([propio_observacion_field]),
             ft.Row([guardar_propio_button, cancelar_propio_button]),
-        ],
+        )],
         visible=False, scroll=ft.ScrollMode.AUTO,
     )
 
@@ -394,21 +395,20 @@ def ChequesView(page: ft.Page) -> ft.Control:
 
     seccion_lista = ft.Column(
         [
-            ft.Text("Cheques", size=20, weight=ft.FontWeight.BOLD),
-            ft.Row([estado_dropdown, origen_dropdown, buscador_field]),
+            ft.Row([estado_dropdown, origen_dropdown, buscador_field], vertical_alignment=ft.CrossAxisAlignment.CENTER),
             contadores_texto,
             ft.Row([nuevo_recibido_button, nuevo_propio_button]),
-            con_scroll_horizontal(encabezado_tabla),
-            contenedor_filas,
-            paginador.controles,
+            tarjeta(con_scroll_horizontal(encabezado_tabla), contenedor_filas, paginador.controles),
         ],
-        spacing=10,
+        spacing=ESPACIO_PANTALLA,
     )
 
     refrescar_lista()
 
     return ft.Column(
-        [seccion_lista, seccion_form_recibido, seccion_form_propio],
+        [encabezado_pantalla("Cheques", "Los cheques recibidos de clientes y los propios entregados a proveedores, con su estado."),
+         seccion_lista, seccion_form_recibido, seccion_form_propio],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )

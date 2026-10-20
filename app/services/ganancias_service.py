@@ -5,16 +5,17 @@
   Ganancia bruta      = ventas netas - costo de lo vendido
   Perdidas de stock   = roturas, vencimientos, faltantes... a costo real (los sobrantes restan)
   Resultado           = ganancia bruta - perdidas de stock
+  Ganancia neta       = resultado - gastos del negocio (alquiler, sueldos, servicios...)
 
 Las notas de credito cuentan en el periodo en que se EMITEN (un mes ya cerrado no cambia solo).
-No incluye gastos del negocio: es lo que deja la mercaderia. Nada se guarda: se calcula al pedirlo.
+Nada se guarda: se calcula al pedirlo.
 """
 
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.repositories import ganancias_repo, lotes_repo, ventas_repo
-from app.services import movimientos_service, ventas_service
+from app.services import gastos_service, movimientos_service, ventas_service
 from app.shared.money import entero_a_cantidad, entero_a_porcentaje, porcentaje_a_entero
 
 CENTAVO = Decimal("0.01")
@@ -204,6 +205,8 @@ def resumen(desde: date, hasta: date) -> dict:
     candidatas = {vid for vid, g in ganancia_por_venta.items() if g < 0} | {
         n["venta_id"] for n in ganancias_repo.listar_notas_credito(desde_iso, hasta_excl)
     }
+    gastos = gastos_service.resumen(desde, hasta)
+
     ventas_con_perdida = []
     for venta in ventas:
         if venta["id"] not in candidatas:
@@ -228,6 +231,10 @@ def resumen(desde: date, hasta: date) -> dict:
         "productos": filas_productos,
         "perdidas_por_motivo": perdidas_por_motivo,
         "ventas_con_perdida": ventas_con_perdida,
+        "gastos": gastos["gastos"],
+        "gastos_por_categoria": gastos["por_categoria"],
+        "ganancia_neta": resultado - gastos["gastos"],
+        "ganancia_neta_porcentaje": porcentaje(resultado - gastos["gastos"], ventas_netas),
     }
 
 

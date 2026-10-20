@@ -24,6 +24,7 @@ from app.shared.money import formatear_precio
 from app.ui.campos import FILTRO_CUIT, FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
 from app.ui.listados import coincide_texto, con_scroll_horizontal
 from app.ui.theme import COLOR_DANGER, COLOR_SUCCESS, COLOR_TEXT_SOFT, COLOR_WARNING
+from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
 
 EXCEPCIONES_NEGOCIO = (
     AnulacionInvalidaError, CargoNoEncontradoError, ChequeEstadoInvalidoError, ChequeNoEncontradoError,
@@ -66,7 +67,7 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
         label="Cuenta", width=180, value="cliente",
         options=[ft.dropdown.Option(key="cliente", text="Clientes"), ft.dropdown.Option(key="proveedor", text="Proveedores")],
     )
-    buscador_field = ft.TextField(label="Buscar", expand=True)
+    buscador_field = campo_buscar("Cliente o proveedor")
     tabla_lista = ft.DataTable(
         columns=[ft.DataColumn(ft.Text(t)) for t in ["Nombre", "Saldo", ""]],
         rows=[],
@@ -99,17 +100,16 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
     buscador_field.on_change = refrescar_lista
 
     seccion_lista = ft.Column([
-        ft.Text("Cuentas Corrientes", size=20, weight=ft.FontWeight.BOLD),
-        ft.Row([tipo_dropdown, buscador_field]),
-        con_scroll_horizontal(tabla_lista),
-    ])
+        ft.Row([tipo_dropdown, buscador_field], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        tarjeta(con_scroll_horizontal(tabla_lista)),
+    ], spacing=ESPACIO_PANTALLA)
 
     # ================= SECCION DETALLE =================
     detalle_tipo: str | None = None
     detalle_id: int | None = None
     detalle_nombre: str = ""
 
-    detalle_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
+    detalle_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     detalle_saldo_texto = ft.Text("", size=16)
     volver_button = ft.ElevatedButton("Volver al listado", on_click=lambda e: ir_a_lista(None))
     # Apagado: la cuenta se ve "limpia" (una correccion parece una edicion). Prendido: todo el
@@ -590,24 +590,27 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
 
     seccion_detalle = ft.Column(
         [
-            detalle_titulo,
-            detalle_saldo_texto,
-            ft.Row([volver_button, ver_anulados_switch], spacing=24),
-            ft.Text("Cargos", weight=ft.FontWeight.BOLD),
-            con_scroll_horizontal(tabla_cargos),
-            ft.Row([cargo_monto_field, cargo_fecha_field, cargo_observacion_field, agregar_cargo_button]),
-            ft.Text("Pagos / cobros", weight=ft.FontWeight.BOLD),
-            con_scroll_horizontal(tabla_pagos),
-            panel_anulacion,
-            panel_correccion,
-            ft.Row([medio_dropdown, pago_monto_field, pago_fecha_field, pago_observacion_field]),
-            panel_cheque,
-            pago_puntual_switch,
-            contenedor_cargos_puntuales,
-            registrar_pago_button,
+            tarjeta(detalle_saldo_texto, ft.Row([volver_button, ver_anulados_switch], spacing=24), titulo=detalle_titulo),
+            tarjeta(
+                con_scroll_horizontal(tabla_cargos),
+                ft.Row([cargo_monto_field, cargo_fecha_field, cargo_observacion_field, agregar_cargo_button]),
+                titulo="Cargos",
+            ),
+            tarjeta(
+                con_scroll_horizontal(tabla_pagos),
+                panel_anulacion,
+                panel_correccion,
+                ft.Row([medio_dropdown, pago_monto_field, pago_fecha_field, pago_observacion_field]),
+                panel_cheque,
+                pago_puntual_switch,
+                contenedor_cargos_puntuales,
+                registrar_pago_button,
+                titulo="Pagos / cobros",
+            ),
         ],
         visible=False,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )
 
     # ================= NAVEGACION =================
@@ -634,7 +637,9 @@ def CuentasCorrientesView(page: ft.Page) -> ft.Control:
     refrescar_lista()
 
     return ft.Column(
-        [seccion_lista, seccion_detalle],
+        [encabezado_pantalla("Cuentas Corrientes", "Lo que deben los clientes y lo que el negocio les debe a los proveedores."),
+         seccion_lista, seccion_detalle],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )

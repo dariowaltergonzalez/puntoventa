@@ -9,6 +9,7 @@ from app.shared.money import formatear_cantidad
 from app.ui.campos import FILTRO_DECIMALES, parsear_decimal_ar_opcional
 from app.ui.listados import Paginador, con_scroll_horizontal
 from app.ui.theme import COLOR_TEXT_SOFT
+from app.ui.componentes import ESPACIO_PANTALLA, encabezado_pantalla, tarjeta
 
 def MovimientosView(page: ft.Page) -> ft.Control:
     producto_dropdown = ft.Dropdown(label="Producto", options=[])
@@ -129,14 +130,17 @@ def MovimientosView(page: ft.Page) -> ft.Control:
 
     encabezado = ft.Column(
         [
-            ft.Text("Movimientos", size=20, weight=ft.FontWeight.BOLD),
-            aviso_texto,
-            ft.Row([producto_dropdown, tipo_dropdown, cantidad_field]),
-            ft.Row([motivo_dropdown, costo_field, referencia_field, observacion_field],
-                   vertical_alignment=ft.CrossAxisAlignment.START),
-            ft.ElevatedButton("Registrar movimiento", on_click=guardar),
+            encabezado_pantalla("Movimientos", "Entradas y salidas de stock. Los ajustes a mano (roturas, sobrantes) se cargan aca."),
+            tarjeta(
+                aviso_texto,
+                ft.Row([producto_dropdown, tipo_dropdown, cantidad_field]),
+                ft.Row([motivo_dropdown, costo_field, referencia_field, observacion_field],
+                       vertical_alignment=ft.CrossAxisAlignment.START),
+                ft.ElevatedButton("Registrar movimiento", on_click=guardar),
+                titulo="Ajuste manual de stock",
+            ),
         ],
-        spacing=10,
+        spacing=ESPACIO_PANTALLA,
     )
 
     zona_tabla = ft.Column(
@@ -149,4 +153,4 @@ def MovimientosView(page: ft.Page) -> ft.Control:
         spacing=10,
     )
 
-    return ft.Column([encabezado, zona_tabla], expand=True, spacing=10)
+    return ft.Column([encabezado, tarjeta(zona_tabla, expand=True)], expand=True, spacing=ESPACIO_PANTALLA)

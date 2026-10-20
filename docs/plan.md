@@ -523,6 +523,30 @@ Antes de mostrar cualquier reporte, se auditó el cálculo. Reglas:
 
 ---
 
+# Gastos del negocio (especificado 2026-10-20, mockup aprobado)
+
+Inspirado en la otra app de Dario. Lo que cuesta mantener el negocio abierto (alquiler, sueldos,
+servicios, combustible, impuestos). Cierra el pendiente de la **ganancia neta**.
+
+- **Menú Cuentas → Gastos.** Alta: fecha, descripción, **categoría de gasto** (catálogo propio,
+  editable; precargadas: Alquiler, Sueldos, Servicios, Automotor, Impositivos, Bancarios,
+  Insumos del local, Otros), **monto total** del comprobante, **IVA del comprobante** (sin IVA /
+  10,5 / 21 / 27 %), medio de pago (opcional), proveedor (texto libre, opcional), observaciones,
+  **comprobante adjunto** (foto o PDF; se guarda en `data/comprobantes/`, que como la base **no
+  viaja por git**).
+- **IVA**, misma regla que las compras: si el negocio es RI, el IVA del comprobante es crédito
+  fiscal → cuenta como gasto solo el **neto**; si no (monotributo), cuenta el **total**. Cada
+  gasto congela esa condición al cargarse (cambiar la configuración no altera gastos viejos).
+- **Editar** (cada cambio al Historial) y **anular** con motivo (queda tachado, deja de sumar).
+  Nunca se borra.
+- Lista con período (hoy / semana / mes / mes anterior), buscador, total **pagado**, **IVA
+  recuperable** y **gastos del negocio**; panel **por categoría** que filtra la lista.
+- **Ganancias**: resultado de la mercadería − **gastos del negocio** = **ganancia neta**, y
+  gastos por categoría en el período.
+- Más adelante: gastos fijos que se repiten (alquiler mensual) e imprimir (con los PDFs).
+
+---
+
 # IVA en todo el circuito (especificado 2026-10-20)
 
 Dario: "el IVA tiene que estar en todos los cálculos, así sea 0" — para que ningún cálculo futuro

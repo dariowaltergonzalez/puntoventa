@@ -67,8 +67,10 @@ Peculiaridades de esta versión de Flet que ya nos mordieron — no asumir que l
 - Mutar `.text` de un `ElevatedButton` ya construido **no se refleja visualmente**. Para un botón cuyo texto cambia (ej. "Agregar" ↔ "Guardar cambios"), usar un `ft.Text` separado como `content=` del botón y mutar `.value` de ese `Text`.
 - `ft.run(main)` para arrancar la app — `ft.app(target=main)` está deprecado.
 - **Nada con alto "infinito" dentro de una pantalla con scroll**: un `ft.Row(vertical_alignment=ft.CrossAxisAlignment.STRETCH)` (o cualquier control que intente llenar el alto) dentro de una `Column(scroll=...)` hace que Flet deje de dibujar todo lo que sigue, **sin ningún error visible** (pasó en Ganancias: se veía el título y abajo nada). Dar alto fijo (`height=`) a esas filas. Si una pantalla "se corta" sin error, revisar esto primero. Las pruebas por código (Page falsa) no lo detectan: solo se ve corriendo la app.
+  - Lo mismo en horizontal: un control con `expand=True` dentro de un `ft.Row(wrap=True)` recibe ancho "infinito" y todo lo que sigue se pinta como un **bloque gris** (pasó con el buscador de Gastos). En filas con `wrap=True`, ancho fijo (`width=`), nunca `expand`.
 
 Patrones de este proyecto (no son limitaciones de Flet, son decisiones de estilo):
+- **Todas las pantallas con la misma forma**, armadas con `app/ui/componentes.py`: `encabezado_pantalla(titulo, subtitulo)`, el formulario dentro de una `tarjeta(..., titulo=...)`, los filtros sueltos sobre el fondo (`campo_buscar(...)` para el buscador), y la lista dentro de otra `tarjeta` (con `expand=True` si la lista tiene scroll propio). No armar recuadros a mano ni títulos con otro tamaño. La altura de los campos la da el tema (`visual_density=COMPACT` en `theme.py`): no usar `dense=True` en formularios.
 - No se usan `AlertDialog` ni navegación modal. Las pantallas con múltiples secciones (lista/formulario/detalle) son `Column`s que togglean `.visible`.
 - Filas expandibles con detalle inline: `ft.ExpansionTile`, no una pantalla aparte.
 - Estado editable de una pantalla: closures + `nonlocal` (no hay manejo de estado global ni clases).

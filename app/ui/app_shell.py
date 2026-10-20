@@ -5,6 +5,7 @@ from app.ui.cheques_view import ChequesView
 from app.ui.clientes_view import ClientesView
 from app.ui.cuentas_corrientes_view import CuentasCorrientesView
 from app.ui.ganancias_view import GananciasView
+from app.ui.gastos_view import GastosView
 from app.ui.listas_precios_view import ListasPreciosView
 from app.ui.log_view import LogView
 from app.ui.medios_pago_view import MediosPagoView
@@ -42,6 +43,7 @@ GRUPOS_MENU = [
     ]),
     ("Cuentas", [
         ("Cuentas Corrientes", ft.Icons.ACCOUNT_BALANCE_WALLET, CuentasCorrientesView),
+        ("Gastos", ft.Icons.MONEY_OFF, GastosView),
         ("Medios de Pago", ft.Icons.PAYMENTS, MediosPagoView),
         ("Cheques", ft.Icons.RECEIPT_LONG, ChequesView),
     ]),

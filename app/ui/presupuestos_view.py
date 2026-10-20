@@ -22,6 +22,7 @@ from app.ui.theme import (
     COLOR_WARNING,
     COLOR_WARNING_WASH,
 )
+from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla
 
 EXCEPCIONES_NEGOCIO = (PresupuestoNoDisponibleError, ValueError)
 FILTROS = [("vigente", "Vigentes"), ("vencido", "Vencidos"), ("convertido", "Convertidos"), ("rechazado", "Rechazados"), (None, "Todos")]
@@ -58,7 +59,7 @@ def PresupuestosView(page: ft.Page) -> ft.Control:
 
     # ================= Filtros =================
     chips: dict = {}
-    buscador_field = ft.TextField(label="Buscar por numero o cliente", expand=True, dense=True)
+    buscador_field = campo_buscar("Numero o cliente")
     lista = ft.Column(spacing=8)
     sin_resultados_texto = ft.Text("", color=COLOR_TEXT_SOFT)
 
@@ -320,20 +321,17 @@ def PresupuestosView(page: ft.Page) -> ft.Control:
     vista = ft.Column(
         [
             ft.Row([
-                ft.Column([
-                    ft.Text("Presupuestos", size=22, weight=ft.FontWeight.BOLD),
-                    ft.Text("Cotizaciones con precios congelados. Se arman en la caja (F4); acá se ajustan los precios "
-                            "mirando la ganancia estimada, y se abren para cobrarlos.", size=13, color=COLOR_TEXT_SOFT),
-                ], spacing=2, expand=True),
+                ft.Container(encabezado_pantalla(
+                    "Presupuestos", "Cotizaciones con precios congelados. Se arman en la caja (F4); acá se ajustan los precios "
+                    "mirando la ganancia estimada, y se abren para cobrarlos."), expand=True),
                 ft.ElevatedButton("Nuevo presupuesto", icon=ft.Icons.ADD, on_click=lambda e: abrir_en_caja(None)),
             ], vertical_alignment=ft.CrossAxisAlignment.START),
-            ft.Row([*chips.values()], spacing=8, wrap=True),
-            buscador_field,
+            ft.Row([*chips.values(), buscador_field], spacing=8, wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             ft.Container(encabezado_columnas, padding=ft.Padding.only(left=52)),
             lista,
             sin_resultados_texto,
         ],
-        expand=True, spacing=14, scroll=ft.ScrollMode.AUTO,
+        expand=True, spacing=ESPACIO_PANTALLA, scroll=ft.ScrollMode.AUTO,
     )
     refrescar()
     return vista

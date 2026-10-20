@@ -2,6 +2,7 @@ import flet as ft
 
 from app.services import log_service
 from app.ui.listados import Paginador, con_scroll_horizontal
+from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
 
 ENTIDADES = [
     "venta", "orden_compra", "producto", "cliente", "proveedor",
@@ -15,7 +16,7 @@ def LogView(page: ft.Page) -> ft.Control:
         options=[ft.dropdown.Option(key="", text="Todas")] + [ft.dropdown.Option(e) for e in ENTIDADES],
         value="",
     )
-    buscador_field = ft.TextField(label="Buscar en la descripcion", expand=True)
+    buscador_field = campo_buscar("Texto de la descripcion")
 
     tabla = ft.DataTable(
         columns=[
@@ -59,10 +60,10 @@ def LogView(page: ft.Page) -> ft.Control:
 
     encabezado = ft.Column(
         [
-            ft.Text("Historial", size=20, weight=ft.FontWeight.BOLD),
-            ft.Row([entidad_dropdown, buscador_field]),
+            encabezado_pantalla("Historial", "Todo lo que se dio de alta, se modifico o se anulo."),
+            ft.Row([entidad_dropdown, buscador_field], vertical_alignment=ft.CrossAxisAlignment.CENTER),
         ],
-        spacing=10,
+        spacing=ESPACIO_PANTALLA,
     )
 
     zona_tabla = ft.Column(
@@ -75,4 +76,4 @@ def LogView(page: ft.Page) -> ft.Control:
         spacing=10,
     )
 
-    return ft.Column([encabezado, zona_tabla], expand=True, spacing=10)
+    return ft.Column([encabezado, tarjeta(zona_tabla, expand=True)], expand=True, spacing=ESPACIO_PANTALLA)

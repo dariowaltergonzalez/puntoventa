@@ -753,3 +753,45 @@ CREATE TABLE IF NOT EXISTS borrador_venta_items (
 
 CREATE INDEX IF NOT EXISTS idx_borradores_venta_tipo_fecha ON borradores_venta (tipo, fecha_creacion);
 CREATE INDEX IF NOT EXISTS idx_borrador_venta_items_borrador_id ON borrador_venta_items (borrador_id);
+
+-- Gastos del negocio
+
+CREATE TABLE IF NOT EXISTS categorias_gasto (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre  TEXT NOT NULL UNIQUE,
+    activo  INTEGER NOT NULL DEFAULT 1,
+    CHECK (activo IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS gastos (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha                 TEXT NOT NULL,                 -- AAAA-MM-DD
+    descripcion           TEXT NOT NULL,
+    categoria_gasto_id    INTEGER NOT NULL,
+    monto_total           INTEGER NOT NULL,              -- escalado x100: lo que dice el comprobante
+    iva_porcentaje        INTEGER,                       -- escalado x100 (2100 = 21%), NULL = sin IVA
+    iva_recuperable       INTEGER NOT NULL DEFAULT 0,    -- 1 = el negocio era RI al cargarlo: el IVA no es gasto
+    medio_pago_id         INTEGER,
+    proveedor             TEXT,                          -- texto libre (YPF, Edesur...): no hace falta ficha
+    observacion           TEXT,
+    comprobante           TEXT,                          -- nombre del archivo en data/comprobantes/
+    anulado_fecha         TEXT,
+    anulado_motivo        TEXT,
+    fecha_creacion        TEXT NOT NULL,
+    FOREIGN KEY (categoria_gasto_id) REFERENCES categorias_gasto (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    FOREIGN KEY (medio_pago_id) REFERENCES medios_pago (id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    CHECK (monto_total > 0),
+    CHECK (iva_porcentaje IS NULL OR iva_porcentaje >= 0),
+    CHECK (iva_recuperable IN (0, 1))
+);
+
+INSERT INTO categorias_gasto (nombre)
+    SELECT nombre FROM (SELECT 'Alquiler' AS nombre UNION ALL SELECT 'Sueldos' UNION ALL SELECT 'Servicios'
+        UNION ALL SELECT 'Automotor' UNION ALL SELECT 'Impositivos' UNION ALL SELECT 'Bancarios'
+        UNION ALL SELECT 'Insumos del local' UNION ALL SELECT 'Otros')
+    WHERE NOT EXISTS (SELECT 1 FROM categorias_gasto);
+CREATE INDEX IF NOT EXISTS idx_gastos_fecha ON gastos (fecha);

@@ -128,3 +128,7 @@ class PreventaNoDisponibleError(Exception):
 
 class PresupuestoNoDisponibleError(Exception):
     pass
+
+
+class GastoNoEncontradoError(Exception):
+    pass

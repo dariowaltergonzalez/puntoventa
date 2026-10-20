@@ -125,6 +125,24 @@ if primera:
 regla("El reporte de Ganancias coincide con la ganancia de cada venta (toda la historia)", problemas_reporte)
 regla("Ninguna venta tiene acreditado mas de lo que se vendio", problemas_nc)
 
+# ================= Gastos del negocio =================
+problemas_gastos = []
+rango_gastos = db.execute("SELECT MIN(fecha), MAX(fecha) FROM gastos").fetchone()
+if rango_gastos[0]:
+    a_mano = Decimal("0")
+    for g in db.execute("SELECT monto_total, iva_porcentaje, iva_recuperable FROM gastos WHERE anulado_fecha IS NULL"):
+        total = entero_a_precio(g["monto_total"])
+        if g["iva_recuperable"] and g["iva_porcentaje"]:
+            total = (total / (1 + Decimal(g["iva_porcentaje"]) / 10000)).quantize(Decimal("0.01"))
+        a_mano += total
+    desde_g, hasta_g = date.fromisoformat(rango_gastos[0]), max(date.fromisoformat(rango_gastos[1]), date.today())
+    reporte_g = ganancias_service.resumen(desde_g, hasta_g)
+    if reporte_g["gastos"] != a_mano:
+        problemas_gastos.append(f"Ganancias descuenta {formatear_precio(reporte_g['gastos'])}, los gastos vigentes suman {formatear_precio(a_mano)}")
+    if reporte_g["ganancia_neta"] != reporte_g["resultado"] - reporte_g["gastos"]:
+        problemas_gastos.append("la ganancia neta no es resultado de la mercaderia - gastos")
+regla("Ganancias descuenta exactamente los gastos vigentes (sin los anulados)", problemas_gastos)
+
 # ================= Cuentas corrientes =================
 regla("Ningun cargo de cuenta corriente tiene aplicado mas que su monto", [
     f"cargo {r['id']}: monto {formatear_precio(entero_a_precio(r['monto']))}, aplicado {formatear_precio(entero_a_precio(r['aplicado']))}"

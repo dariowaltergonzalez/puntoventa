@@ -17,6 +17,7 @@ from app.services.exceptions import (
 from app.shared.money import formatear_cantidad, formatear_porcentaje, formatear_precio
 from app.ui.listados import Paginador, coincide_exacto, coincide_texto, con_scroll_horizontal, filtrar
 from app.ui.theme import COLOR_DANGER_WASH, COLOR_WARNING
+from app.ui.componentes import ESPACIO_PANTALLA, campo_buscar, encabezado_pantalla, tarjeta
 
 TIPO_EXISTENTE = "Producto existente"
 TIPO_NUEVO = "Producto nuevo"
@@ -289,7 +290,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         ],
         value="",
     )
-    buscador_field = ft.TextField(label="Buscar por numero o proveedor", width=280)
+    buscador_field = campo_buscar("Numero o proveedor")
     contador_texto = ft.Text("")
     nueva_oc_button = ft.ElevatedButton("+ Nueva orden de compra")
     imprimir_button = ft.ElevatedButton(
@@ -398,19 +399,17 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
 
     seccion_lista = ft.Column(
         [
-            ft.Text("Ordenes de Compra", size=20, weight=ft.FontWeight.BOLD),
-            ft.Row([estado_filtro_dropdown, buscador_field, imprimir_button, nueva_oc_button]),
+            ft.Row([estado_filtro_dropdown, buscador_field, imprimir_button, nueva_oc_button],
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
             contador_texto,
-            encabezado_lista,
-            ft.Divider(height=1),
-            lista_filas,
-            paginador.controles,
+            tarjeta(encabezado_lista, ft.Divider(height=1), lista_filas, paginador.controles),
         ],
         visible=True,
+        spacing=ESPACIO_PANTALLA,
     )
 
     # ================= SECCION FORMULARIO (alta/edicion) =================
-    form_titulo = ft.Text("Nueva orden de compra", size=18, weight=ft.FontWeight.BOLD)
+    form_titulo = ft.Text("Nueva orden de compra", size=15, weight=ft.FontWeight.BOLD)
     proveedor_dropdown = ft.Dropdown(label="Proveedor existente", width=250, options=[])
     proveedor_nuevo_field = ft.TextField(label="O escribi un proveedor nuevo", width=250)
     proveedor_generico_switch = ft.Switch(label="Usar proveedor generico")
@@ -517,20 +516,27 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
 
     seccion_formulario = ft.Column(
         [
-            form_titulo,
-            ft.Row([proveedor_dropdown, proveedor_nuevo_field, proveedor_generico_switch]),
-            ft.Row([fecha_estimada_field, iva_field]),
-            ft.Row([observacion_field]),
-            ft.Text("Lineas", weight=ft.FontWeight.BOLD),
-            contenedor_lineas_pedido,
-            agregar_linea_button,
-            ya_en_mano_switch,
-            ft.Row([remito_field, recepcion_observacion_field]),
-            recepcion_a_credito_switch,
+            tarjeta(
+                ft.Row([proveedor_dropdown, proveedor_nuevo_field, proveedor_generico_switch]),
+                ft.Row([fecha_estimada_field, iva_field]),
+                ft.Row([observacion_field]),
+                titulo=form_titulo,
+            ),
+            tarjeta(
+                contenedor_lineas_pedido,
+                agregar_linea_button,
+                titulo="Lineas",
+            ),
+            tarjeta(
+                ya_en_mano_switch,
+                ft.Row([remito_field, recepcion_observacion_field]),
+                recepcion_a_credito_switch,
+            ),
             ft.Row([guardar_form_button, cancelar_form_button]),
         ],
         visible=False,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )
 
     def ir_a_formulario(oc_id: int | None) -> None:
@@ -566,7 +572,7 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
         page.update()
 
     # ================= SECCION DETALLE =================
-    detalle_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
+    detalle_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     detalle_info = ft.Text("")
     tabla_items_oc = ft.DataTable(
         columns=[ft.DataColumn(ft.Text(t)) for t in
@@ -594,18 +600,16 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     contenedor_lineas_extra = ft.Column([])
     agregar_extra_button = ft.TextButton("+ Agregar item extra (no pedido)", on_click=agregar_linea_extra)
     confirmar_recepcion_button = ft.ElevatedButton("Confirmar recepcion")
-    seccion_recepcion = ft.Column(
-        [
-            ft.Text("Registrar recepcion", weight=ft.FontWeight.BOLD),
-            ft.Text("Cantidad pendiente de recibir por linea (dejar en 0 lo que no llega ahora):"),
-            contenedor_pendientes_recepcion,
-            ft.Text("Items extra (no pedidos):"),
-            contenedor_lineas_extra,
-            agregar_extra_button,
-            ft.Row([seccion_recepcion_numero_remito, seccion_recepcion_observacion]),
-            seccion_recepcion_a_credito_switch,
-            confirmar_recepcion_button,
-        ],
+    seccion_recepcion = tarjeta(
+        contenedor_pendientes_recepcion,
+        ft.Text("Items extra (no pedidos):"),
+        contenedor_lineas_extra,
+        agregar_extra_button,
+        ft.Row([seccion_recepcion_numero_remito, seccion_recepcion_observacion]),
+        seccion_recepcion_a_credito_switch,
+        confirmar_recepcion_button,
+        titulo="Registrar recepcion",
+        subtitulo="Cantidad pendiente de recibir por linea (dejar en 0 lo que no llega ahora).",
         visible=False,
     )
     campos_pendientes: list[dict] = []
@@ -796,19 +800,20 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
 
     seccion_detalle = ft.Column(
         [
-            detalle_titulo,
-            detalle_info,
-            ft.Row([editar_oc_button, registrar_recepcion_button, dar_por_recibida_button, cancelar_oc_button, volver_lista_button]),
-            ft.Row([motivo_cancelacion_field, confirmar_cancelacion_button]),
-            ft.Row([motivo_cierre_field, confirmar_cierre_button]),
+            tarjeta(
+                detalle_info,
+                ft.Row([editar_oc_button, registrar_recepcion_button, dar_por_recibida_button, cancelar_oc_button, volver_lista_button]),
+                ft.Row([motivo_cancelacion_field, confirmar_cancelacion_button]),
+                ft.Row([motivo_cierre_field, confirmar_cierre_button]),
+                titulo=detalle_titulo,
+            ),
             seccion_recepcion,
-            ft.Text("Lineas pedidas", weight=ft.FontWeight.BOLD),
-            con_scroll_horizontal(tabla_items_oc),
-            ft.Text("Historial de recepciones", weight=ft.FontWeight.BOLD),
-            contenedor_recepciones,
+            tarjeta(con_scroll_horizontal(tabla_items_oc), titulo="Lineas pedidas"),
+            tarjeta(contenedor_recepciones, titulo="Historial de recepciones"),
         ],
         visible=False,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )
 
     def ir_a_lista(e: ft.ControlEvent | None) -> None:
@@ -830,7 +835,9 @@ def OrdenesCompraView(page: ft.Page) -> ft.Control:
     refrescar_lista()
 
     return ft.Column(
-        [seccion_lista, seccion_formulario, seccion_detalle],
+        [encabezado_pantalla("Ordenes de Compra", "Lo que se le pide a cada proveedor y lo que va llegando (recepciones)."),
+         seccion_lista, seccion_formulario, seccion_detalle],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )

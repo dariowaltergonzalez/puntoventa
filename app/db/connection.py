@@ -1232,3 +1232,50 @@ def _migrar(conn: sqlite3.Connection) -> None:
         except Exception:
             conn.execute("ROLLBACK")
             raise
+
+    # Gastos del negocio (alquiler, sueldos, servicios...): la ganancia neta.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS categorias_gasto (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre  TEXT NOT NULL UNIQUE,
+            activo  INTEGER NOT NULL DEFAULT 1,
+            CHECK (activo IN (0, 1))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS gastos (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha                 TEXT NOT NULL,                 -- AAAA-MM-DD
+            descripcion           TEXT NOT NULL,
+            categoria_gasto_id    INTEGER NOT NULL,
+            monto_total           INTEGER NOT NULL,              -- escalado x100: lo que dice el comprobante
+            iva_porcentaje        INTEGER,                       -- escalado x100 (2100 = 21%), NULL = sin IVA
+            iva_recuperable       INTEGER NOT NULL DEFAULT 0,    -- 1 = el negocio era RI al cargarlo: el IVA no es gasto
+            medio_pago_id         INTEGER,
+            proveedor             TEXT,                          -- texto libre (YPF, Edesur...): no hace falta ficha
+            observacion           TEXT,
+            comprobante           TEXT,                          -- nombre del archivo en data/comprobantes/
+            anulado_fecha         TEXT,
+            anulado_motivo        TEXT,
+            fecha_creacion        TEXT NOT NULL,
+            FOREIGN KEY (categoria_gasto_id) REFERENCES categorias_gasto (id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE,
+            FOREIGN KEY (medio_pago_id) REFERENCES medios_pago (id)
+                ON DELETE SET NULL
+                ON UPDATE CASCADE,
+            CHECK (monto_total > 0),
+            CHECK (iva_porcentaje IS NULL OR iva_porcentaje >= 0),
+            CHECK (iva_recuperable IN (0, 1))
+        )
+        """
+    )
+    # Solo si la tabla esta vacia: con AUTOINCREMENT, un INSERT que choca contra el UNIQUE igual
+    # gasta un numero de la secuencia, y esto corre en cada conexion.
+    if conn.execute("SELECT COUNT(*) FROM categorias_gasto").fetchone()[0] == 0:
+        for nombre in ("Alquiler", "Sueldos", "Servicios", "Automotor", "Impositivos", "Bancarios", "Insumos del local", "Otros"):
+            conn.execute("INSERT INTO categorias_gasto (nombre) VALUES (?)", (nombre,))
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gastos_fecha ON gastos (fecha)")

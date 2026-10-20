@@ -14,12 +14,14 @@ from app.ui.theme import (
     COLOR_BG_ALT,
     COLOR_BORDER,
     COLOR_DANGER,
+    COLOR_DANGER_WASH,
     COLOR_SUCCESS,
     COLOR_SUCCESS_WASH,
     COLOR_SURFACE,
     COLOR_TEXT,
     COLOR_TEXT_SOFT,
 )
+from app.ui.componentes import encabezado_pantalla
 
 COLOR_GRILLA = "#e4eeec"
 DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
@@ -72,8 +74,8 @@ def GananciasView(page: ft.Page) -> ft.Control:
 
     # ================= Filtros =================
     chips: dict[str, ft.Container] = {}
-    desde_field = ft.TextField(label="Desde", width=140, dense=True, hint_text="AAAA-MM-DD")
-    hasta_field = ft.TextField(label="Hasta", width=140, dense=True, hint_text="AAAA-MM-DD")
+    desde_field = ft.TextField(label="Desde", width=140, hint_text="AAAA-MM-DD")
+    hasta_field = ft.TextField(label="Hasta", width=140, hint_text="AAAA-MM-DD")
 
     rango_personalizado_texto = ft.Text("✓ Rango personalizado", size=13, weight=ft.FontWeight.W_500,
                                         color=COLOR_ACCENT_STRONG, visible=False)
@@ -122,6 +124,7 @@ def GananciasView(page: ft.Page) -> ft.Control:
     # alto "infinito" a la fila y Flet deja de dibujar todo lo que sigue, sin mostrar ningun error.
     ALTO_KPI = 116
     kpis_row = ft.Row(spacing=0, height=ALTO_KPI)
+    neta_row = ft.Row(spacing=0, height=ALTO_KPI)
     contexto_row = ft.Row(spacing=24, wrap=True)
 
     def tile(etiqueta: str, valor: str, nota: ft.Control, color_valor: str = COLOR_TEXT,
@@ -225,6 +228,8 @@ def GananciasView(page: ft.Page) -> ft.Control:
     tabla_perdidas = ft.DataTable(columns=columnas("Motivo", "Unid.", "A costo", numericas=2), rows=[])
     tabla_con_perdida = ft.DataTable(columns=columnas("Venta", "Cliente", "Ganancia", numericas=1), rows=[])
     sin_perdidas_texto = ft.Text("No hubo roturas ni ajustes en el período.", size=13, color=COLOR_SUCCESS)
+    tabla_gastos = ft.DataTable(columns=columnas("Categoría", "Gasto", numericas=1), rows=[])
+    sin_gastos_texto = ft.Text("No hay gastos cargados en el período.", size=13, color=COLOR_TEXT_SOFT)
     sin_ventas_con_perdida_texto = ft.Text("Ninguna venta por debajo del costo.", size=13, color=COLOR_SUCCESS)
 
     def panel(titulo: str, sub: str, *controles: ft.Control, expand: int | None = None) -> ft.Container:
@@ -273,6 +278,32 @@ def GananciasView(page: ft.Page) -> ft.Control:
                  color_valor=COLOR_ACCENT_STRONG if r["resultado"] >= 0 else COLOR_DANGER,
                  fondo=COLOR_ACCENT_WASH, grande=True),
         ]
+        neta = r["ganancia_neta"]
+        neta_row.controls = [
+            tile("Resultado de la mercadería", pesos(r["resultado"]), nota("Lo que dejó la mercadería (arriba)")),
+            operador("−"),
+            tile("Gastos del negocio", pesos(r["gastos"]), nota("Alquiler, sueldos, servicios... (pantalla Gastos)"),
+                 color_valor=COLOR_DANGER if r["gastos"] > 0 else COLOR_TEXT),
+            operador("="),
+            tile("Ganancia neta", pesos(neta), nota(f"{porcentaje(r['ganancia_neta_porcentaje'])} de las ventas netas"),
+                 color_valor=COLOR_ACCENT_STRONG if neta >= 0 else COLOR_DANGER,
+                 fondo=COLOR_ACCENT_WASH if neta >= 0 else COLOR_DANGER_WASH, grande=True),
+        ]
+        maximo_gasto = max((c["gasto"] for c in r["gastos_por_categoria"]), default=Decimal("0"))
+        tabla_gastos.rows = [
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text(c["categoria"])),
+                ft.DataCell(ft.Row([
+                    ft.Container(width=max(2, int(48 * c["gasto"] / maximo_gasto)) if maximo_gasto > 0 else 0,
+                                 height=6, border_radius=3, bgcolor=COLOR_DANGER, opacity=0.55),
+                    ft.Text(formatear_precio(c["gasto"])),
+                ], spacing=8, tight=True, alignment=ft.MainAxisAlignment.END)),
+            ])
+            for c in r["gastos_por_categoria"]
+        ]
+        tabla_gastos.visible = bool(r["gastos_por_categoria"])
+        sin_gastos_texto.visible = not r["gastos_por_categoria"]
+
         contexto = []
         if r["cantidad_ventas"]:
             contexto += [dato("Ticket promedio", pesos(r["ticket_promedio"])),
@@ -337,15 +368,17 @@ def GananciasView(page: ft.Page) -> ft.Control:
 
     vista = ft.Column(
         [
-            ft.Column([ft.Text("Ganancias", size=22, weight=ft.FontWeight.BOLD), subtitulo], spacing=2),
+            ft.Column([encabezado_pantalla("Ganancias"), subtitulo], spacing=2),
             ft.Row([*chips.values(), ft.Container(width=8), desde_field, hasta_field, ver_button, rango_personalizado_texto],
                    spacing=8, wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             ft.Container(
                 content=kpis_row, border=ft.Border.all(1, COLOR_BORDER), border_radius=12,
                 bgcolor=COLOR_SURFACE, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             ),
-            ft.Text("No incluye los gastos del negocio (alquiler, luz, sueldos): es lo que deja la mercadería.",
-                    size=12.5, color=COLOR_TEXT_SOFT),
+            ft.Container(
+                content=neta_row, border=ft.Border.all(1, COLOR_BORDER), border_radius=12,
+                bgcolor=COLOR_SURFACE, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            ),
             contexto_row,
             ft.Container(
                 bgcolor=COLOR_SURFACE, border=ft.Border.all(1, COLOR_BORDER), border_radius=12,
@@ -361,6 +394,8 @@ def GananciasView(page: ft.Page) -> ft.Control:
                               tabla_perdidas, sin_perdidas_texto),
                         panel("Ventas con pérdida", "Se vendieron por debajo del costo (con sus notas de crédito).",
                               tabla_con_perdida, sin_ventas_con_perdida_texto),
+                        panel("Gastos por categoría", "Lo que se descuenta para llegar a la ganancia neta.",
+                              tabla_gastos, sin_gastos_texto),
                     ], expand=2, spacing=18, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
                 ],
                 spacing=18, vertical_alignment=ft.CrossAxisAlignment.START,

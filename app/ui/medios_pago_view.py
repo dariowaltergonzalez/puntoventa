@@ -3,6 +3,7 @@ import flet as ft
 from app.services import medios_pago_service
 from app.services.exceptions import MedioPagoDuplicadoError, MedioPagoNoEncontradoError
 from app.ui.listados import con_scroll_horizontal
+from app.ui.componentes import ESPACIO_PANTALLA, encabezado_pantalla, tarjeta
 
 EXCEPCIONES_NEGOCIO = (MedioPagoDuplicadoError, MedioPagoNoEncontradoError, ValueError)
 
@@ -93,11 +94,15 @@ def MediosPagoView(page: ft.Page) -> ft.Control:
 
     return ft.Column(
         [
-            ft.Text("Medios de Pago", size=20, weight=ft.FontWeight.BOLD),
-            ft.Row([nombre_field, cuenta_corriente_switch, activo_switch]),
-            ft.Row([guardar_button, cancelar_button]),
-            con_scroll_horizontal(tabla),
+            encabezado_pantalla("Medios de Pago", "Las formas de cobrar y pagar: efectivo, transferencia, cheque, cuenta corriente..."),
+            tarjeta(
+                ft.Row([nombre_field, cuenta_corriente_switch, activo_switch]),
+                ft.Row([guardar_button, cancelar_button]),
+                titulo="Datos del medio de pago",
+            ),
+            tarjeta(con_scroll_horizontal(tabla)),
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )

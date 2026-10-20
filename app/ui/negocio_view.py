@@ -7,6 +7,7 @@ from app.services.exceptions import CorreoNoConfiguradoError, EnvioCorreoError, 
 from app.ui.campos import FILTRO_CUIT, FILTRO_DECIMALES, FILTRO_ENTEROS, parsear_decimal_ar_opcional
 from app.ui.listados import con_scroll_horizontal
 from app.ui.theme import COLOR_SUCCESS, COLOR_TEXT_SOFT, COLOR_WARNING
+from app.ui.componentes import ESPACIO_PANTALLA, encabezado_pantalla, tarjeta
 
 EXCEPCIONES_NEGOCIO = (NegocioNoConfiguradoError, CorreoNoConfiguradoError, EnvioCorreoError, ValueError)
 
@@ -16,12 +17,6 @@ SEGURIDAD_LABEL = {"starttls": "STARTTLS (puerto 587)", "ssl": "SSL (puerto 465)
 def NegocioView(page: ft.Page) -> ft.Control:
     def mostrar_mensaje(texto: str) -> None:
         page.show_dialog(ft.SnackBar(ft.Text(texto)))
-
-    def titulo_seccion(texto: str, ayuda: str | None = None) -> ft.Control:
-        controles = [ft.Text(texto, size=16, weight=ft.FontWeight.BOLD)]
-        if ayuda:
-            controles.append(ft.Text(ayuda, size=12, color=COLOR_TEXT_SOFT))
-        return ft.Column([ft.Divider(height=16), *controles], spacing=2)
 
     # ================= Identidad legal =================
     razon_social_field = ft.TextField(label="Razon social / titular *", expand=True,
@@ -293,39 +288,48 @@ def NegocioView(page: ft.Page) -> ft.Control:
 
     vista = ft.Column(
         [
-            ft.Text("Datos del negocio", size=20, weight=ft.FontWeight.BOLD),
-            titulo_seccion("Identidad legal"),
-            ft.Row([razon_social_field, cuit_field, condicion_iva_dropdown], vertical_alignment=ft.CrossAxisAlignment.START),
-            ft.Row([precios_con_iva_switch, alicuota_iva_field, iva_explicacion_texto],
-                   vertical_alignment=ft.CrossAxisAlignment.CENTER, wrap=True),
-            ft.Row([nombre_fantasia_field, ingresos_brutos_field, inicio_actividades_field],
-                   vertical_alignment=ft.CrossAxisAlignment.START),
-            titulo_seccion("Contacto"),
-            ft.Row([direccion_field, ciudad_field, provincia_field, codigo_postal_field]),
-            ft.Row([telefono_field, email_field, web_field]),
-            titulo_seccion(
-                "Correo saliente (SMTP)",
-                "Para mandar presupuestos y ordenes de compra por mail. Con Gmail hace falta una "
-                "'contrasena de aplicacion', no la contrasena normal de la cuenta.",
+            encabezado_pantalla("Datos del negocio", "Los datos que salen en los presupuestos, ordenes de compra y mails."),
+            tarjeta(
+                ft.Row([razon_social_field, cuit_field, condicion_iva_dropdown], vertical_alignment=ft.CrossAxisAlignment.START),
+                ft.Row([precios_con_iva_switch, alicuota_iva_field, iva_explicacion_texto],
+                       vertical_alignment=ft.CrossAxisAlignment.CENTER, wrap=True),
+                ft.Row([nombre_fantasia_field, ingresos_brutos_field, inicio_actividades_field],
+                       vertical_alignment=ft.CrossAxisAlignment.START),
+                titulo="Identidad legal",
             ),
-            ft.Row([smtp_servidor_field, smtp_puerto_field, smtp_seguridad_dropdown, usar_gmail_button]),
-            ft.Row([smtp_usuario_field, ft.Column([smtp_password_field, smtp_password_estado], spacing=2)],
-                   vertical_alignment=ft.CrossAxisAlignment.START),
-            ft.Row([smtp_remitente_nombre_field, smtp_remitente_email_field]),
-            ft.Row([guardar_button, probar_mail_button]),
-            titulo_seccion(
-                "Cuentas bancarias",
-                "La principal se propone al pagar con un cheque propio (banco, librador y CUIT).",
+            tarjeta(
+                ft.Row([direccion_field, ciudad_field, provincia_field, codigo_postal_field]),
+                ft.Row([telefono_field, email_field, web_field]),
+                titulo="Contacto",
             ),
-            con_scroll_horizontal(tabla_cuentas),
-            ft.Row([cuenta_banco_field, cuenta_titular_field, cuenta_cuit_field, cuenta_cbu_field, cuenta_alias_field,
-                    cuenta_principal_switch, agregar_cuenta_button], wrap=True),
-            titulo_seccion("WhatsApp", "Se guarda en formato internacional para poder mandar mensajes con un link."),
-            con_scroll_horizontal(tabla_whatsapp),
-            ft.Row([whatsapp_numero_field, whatsapp_etiqueta_field, whatsapp_principal_switch, agregar_whatsapp_button]),
+            tarjeta(
+                ft.Row([smtp_servidor_field, smtp_puerto_field, smtp_seguridad_dropdown, usar_gmail_button]),
+                ft.Row([smtp_usuario_field, ft.Column([smtp_password_field, smtp_password_estado], spacing=2)],
+                       vertical_alignment=ft.CrossAxisAlignment.START),
+                ft.Row([smtp_remitente_nombre_field, smtp_remitente_email_field]),
+                ft.Row([probar_mail_button]),
+                titulo="Correo saliente (SMTP)",
+                subtitulo="Para mandar presupuestos y ordenes de compra por mail. Con Gmail hace falta una "
+                          "'contrasena de aplicacion', no la contrasena normal de la cuenta.",
+            ),
+            ft.Row([guardar_button]),
+            tarjeta(
+                con_scroll_horizontal(tabla_cuentas),
+                ft.Row([cuenta_banco_field, cuenta_titular_field, cuenta_cuit_field, cuenta_cbu_field, cuenta_alias_field,
+                        cuenta_principal_switch, agregar_cuenta_button], wrap=True),
+                titulo="Cuentas bancarias",
+                subtitulo="La principal se propone al pagar con un cheque propio (banco, librador y CUIT).",
+            ),
+            tarjeta(
+                con_scroll_horizontal(tabla_whatsapp),
+                ft.Row([whatsapp_numero_field, whatsapp_etiqueta_field, whatsapp_principal_switch, agregar_whatsapp_button]),
+                titulo="WhatsApp",
+                subtitulo="Se guarda en formato internacional para poder mandar mensajes con un link.",
+            ),
         ],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        spacing=ESPACIO_PANTALLA,
     )
     refrescar()
     return vista

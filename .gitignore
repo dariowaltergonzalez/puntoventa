@@ -22,3 +22,5 @@ data/*.sqlite*
 .vscode/
 .env
 *.log
+data/comprobantes/
+data/backups/
