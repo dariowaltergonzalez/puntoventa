@@ -56,7 +56,15 @@ Reglas que no se rompen:
 - **IVA en todo cálculo de plata, aunque valga 0**: `negocio_service.config_iva()` es la única fuente de verdad (solo el Responsable Inscripto cobra IVA; precios con IVA incluido o no; el IVA de compras es costo si el negocio no lo recupera). `ventas_service.calcular_totales(...)` devuelve siempre `subtotal`, `neto`, `iva` y `total` (neto + iva = total exacto). **La ganancia se calcula siempre sobre el neto.** El IVA nunca se tipea en la caja; los porcentajes de IVA se guardan escalados x100 (2100 = 21%). Toda operación nueva que mueva plata tiene que guardar/derivar neto e IVA y pasar la regla del cuadre "neto + IVA = total".
 - **Los valores calculados nunca se persisten cacheados** (totales, ganancias, etc.) — se calculan al momento de leer, para no arriesgarse a desincronizar un valor guardado si algo que lo compone cambia.
 - **Auditoría obligatoria**: toda alta, edición o cancelación relevante de una entidad llama a `log_service.registrar(...)` o `log_service.registrar_cambios(...)` (éste último para diffs campo a campo, con nombres resueltos en vez de ids crudos). No es opcional — es la convención de auditoría del proyecto, cumplida por función/módulo, sin necesidad de una interfaz formal (el proyecto es funciones sueltas, no clases).
-- Excepciones de negocio con nombres descriptivos, todas en `app/services/exceptions.py`.
+- Excepciones de negocio con nombres descriptivos, todas en `app/services/exceptions.py`, heredando de `ErrorDeNegocio` (la UI muestra esos como aviso; cualquier otra excepción es un bug y no se esconde).
+- **Formato de los textos** (`app/shared/textos.py`), aplicado **en el servicio al guardar** (venga de donde venga el dato) y mostrado en el formulario al salir del campo (`campos.aplicar_formato_texto`):
+  - `mayusculas`: **todo nombre, de cosas y de personas** — producto (nombre y código), categoría, proveedor, razón social del cliente, lista de precios, contactos (principal del cliente, del proveedor, contactos de clientes).
+  - `nombre_propio` no se usa al guardar: es para mostrar un nombre de persona dentro de un texto armado (ej. "Estimada Marcela Fernandez" en un mail).
+  - `primera_mayuscula`: configuración interna — medios de pago, categorías de gasto.
+  - `email`: siempre minúsculas.
+  - Todo lo demás (marca, descripción, nombre de fantasía, dirección, observaciones, sector) se guarda como se escribió.
+  - Un campo de nombre nuevo tiene que caer en una de estas categorías. Las búsquedas y los controles de duplicados nunca dependen de mayúsculas. Los valores fijos en el código (ej. `NOMBRE_CLIENTE_GENERICO`) van ya en su formato.
+  - Las **migraciones de datos** (no de esquema) corren una sola vez: se marcan en la tabla `migraciones_datos` (ej. `formato_textos` en `connection._normalizar_textos`).
 
 ## Capa de UI (`app/ui/`, Flet 0.86.5)
 

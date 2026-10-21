@@ -1279,3 +1279,71 @@ def _migrar(conn: sqlite3.Connection) -> None:
         for nombre in ("Alquiler", "Sueldos", "Servicios", "Automotor", "Impositivos", "Bancarios", "Insumos del local", "Otros"):
             conn.execute("INSERT INTO categorias_gasto (nombre) VALUES (?)", (nombre,))
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gastos_fecha ON gastos (fecha)")
+    _migrar_formato_textos(conn, "formato_textos", _COLUMNAS_CON_FORMATO)
+    # Despues se decidio que los nombres de personas tambien van en mayusculas.
+    _migrar_formato_textos(conn, "contactos_en_mayusculas", [
+        ("proveedores", "contacto", "mayusculas", False),
+        ("clientes", "contacto_principal", "mayusculas", False),
+        ("cliente_contactos", "nombre", "mayusculas", False),
+        ("proveedor_contactos", "nombre", "mayusculas", False),
+    ])
+
+
+# Formato de los textos (ver app/shared/textos.py): (tabla, columna, formato, es UNIQUE).
+_COLUMNAS_CON_FORMATO = [
+    ("productos", "codigo", "mayusculas", True),
+    ("productos", "nombre", "mayusculas", False),
+    ("categorias", "nombre", "mayusculas", True),
+    ("proveedores", "nombre", "mayusculas", True),
+    ("proveedores", "contacto", "mayusculas", False),
+    ("proveedores", "email", "email", False),
+    ("clientes", "razon_social", "mayusculas", True),
+    ("clientes", "contacto_principal", "mayusculas", False),
+    ("clientes", "email", "email", False),
+    ("cliente_contactos", "nombre", "mayusculas", False),
+    ("cliente_contactos", "email", "email", False),
+    ("proveedor_contactos", "nombre", "mayusculas", False),
+    ("proveedor_contactos", "email", "email", False),
+    ("listas_precios", "nombre", "mayusculas", True),
+    ("medios_pago", "nombre", "primera_mayuscula", True),
+    ("categorias_gasto", "nombre", "primera_mayuscula", True),
+]
+
+
+def _migrar_formato_textos(conn: sqlite3.Connection, nombre_migracion: str, columnas: list[tuple]) -> None:
+    """Migracion de datos, una sola vez por nombre: pasa los textos ya cargados al formato que hoy
+    aplican los servicios al guardar. Si al normalizar un valor UNIQUE chocaria con otra fila (ej.
+    'Limpieza' y 'LIMPIEZA'), esa fila se deja como esta y queda anotada en el Historial."""
+    conn.execute("CREATE TABLE IF NOT EXISTS migraciones_datos (nombre TEXT PRIMARY KEY, fecha TEXT NOT NULL)")
+    if conn.execute("SELECT 1 FROM migraciones_datos WHERE nombre = ?", (nombre_migracion,)).fetchone():
+        return
+    from datetime import datetime
+
+    from app.shared import textos
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        cambiados, sin_cambiar = 0, []
+        for tabla, columna, formato, unico in columnas:
+            convertir = getattr(textos, formato)
+            for fila in conn.execute(f"SELECT id, {columna} AS valor FROM {tabla} WHERE {columna} IS NOT NULL").fetchall():
+                nuevo = convertir(fila["valor"])
+                if nuevo == fila["valor"]:
+                    continue
+                if unico and conn.execute(f"SELECT 1 FROM {tabla} WHERE {columna} = ? AND id <> ?", (nuevo, fila["id"])).fetchone():
+                    sin_cambiar.append(f"{tabla} #{fila['id']} '{fila['valor']}'")
+                    continue
+                conn.execute(f"UPDATE {tabla} SET {columna} = ? WHERE id = ?", (nuevo, fila["id"]))
+                cambiados += 1
+        ahora = datetime.now().isoformat()
+        if cambiados or sin_cambiar:
+            conn.execute(
+                "INSERT INTO log_eventos (fecha, entidad, entidad_id, descripcion) VALUES (?, 'sistema', NULL, ?)",
+                (ahora, f"Formato de textos ({nombre_migracion}): se unificaron {cambiados} valores"
+                        + (f". Quedaron sin cambiar porque chocaban con otro igual: {', '.join(sin_cambiar)}" if sin_cambiar else "")),
+            )
+        conn.execute("INSERT INTO migraciones_datos (nombre, fecha) VALUES (?, ?)", (nombre_migracion, ahora))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise

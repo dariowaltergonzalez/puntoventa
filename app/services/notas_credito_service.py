@@ -109,7 +109,7 @@ def _saldo_cargos_de_la_venta(venta_fila: sqlite3.Row) -> list[dict]:
 
 def _es_cliente_generico(cliente_id: int) -> bool:
     cliente = clientes_service.obtener_cliente(cliente_id)
-    return cliente is not None and cliente["razon_social"] == clientes_service.NOMBRE_CLIENTE_GENERICO
+    return cliente is not None and clientes_service.es_cliente_generico(cliente)
 
 
 def _cheques_devolvibles(venta_id: int) -> list[dict]:

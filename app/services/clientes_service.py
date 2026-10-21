@@ -10,6 +10,7 @@ from app.services.exceptions import (
     ListaPrecioNoEncontradaError,
 )
 from app.shared.money import entero_a_porcentaje, entero_a_precio, porcentaje_a_entero, precio_a_entero
+from app.shared import textos
 
 _CAMPOS_LOG = [
     "razon_social", "nombre_fantasia", "dni", "cuit", "contacto_principal", "telefono", "email",
@@ -129,7 +130,7 @@ def crear_cliente(
     tasa_interes_mora_diaria: Decimal | None = None,
     observacion: str | None = None,
 ) -> dict:
-    razon_social = razon_social.strip()
+    razon_social = textos.mayusculas(razon_social)
     if not razon_social:
         raise ValueError("La razon social del cliente no puede estar vacia")
     _validar_plazo_pago(plazo_pago_dias)
@@ -147,9 +148,9 @@ def crear_cliente(
             nombre_fantasia=_texto_o_none(nombre_fantasia),
             dni=_texto_o_none(dni),
             cuit=_texto_o_none(cuit),
-            contacto_principal=_texto_o_none(contacto_principal),
+            contacto_principal=textos.mayusculas(_texto_o_none(contacto_principal)),
             telefono=_texto_o_none(telefono),
-            email=_texto_o_none(email),
+            email=textos.email(_texto_o_none(email)),
             direccion=_texto_o_none(direccion),
             ciudad=_texto_o_none(ciudad),
             provincia=_texto_o_none(provincia),
@@ -193,7 +194,7 @@ def actualizar_cliente(
     observacion: str | None,
     activo: bool,
 ) -> dict:
-    razon_social = razon_social.strip()
+    razon_social = textos.mayusculas(razon_social)
     if not razon_social:
         raise ValueError("La razon social del cliente no puede estar vacia")
     _validar_plazo_pago(plazo_pago_dias)
@@ -216,9 +217,9 @@ def actualizar_cliente(
             nombre_fantasia=_texto_o_none(nombre_fantasia),
             dni=_texto_o_none(dni),
             cuit=_texto_o_none(cuit),
-            contacto_principal=_texto_o_none(contacto_principal),
+            contacto_principal=textos.mayusculas(_texto_o_none(contacto_principal)),
             telefono=_texto_o_none(telefono),
-            email=_texto_o_none(email),
+            email=textos.email(_texto_o_none(email)),
             direccion=_texto_o_none(direccion),
             ciudad=_texto_o_none(ciudad),
             provincia=_texto_o_none(provincia),
@@ -259,13 +260,13 @@ def listar_clientes(solo_activos: bool = False) -> list[dict]:
 
 
 def obtener_o_crear_cliente_por_razon_social(razon_social: str) -> dict:
-    razon_social = razon_social.strip()
+    razon_social = textos.mayusculas(razon_social)
     if not razon_social:
         raise ValueError("La razon social del cliente no puede estar vacia")
     return _a_dict(clientes_repo.obtener_o_crear_por_razon_social(razon_social))
 
 
-NOMBRE_CLIENTE_GENERICO = "Consumidor Final"
+NOMBRE_CLIENTE_GENERICO = "CONSUMIDOR FINAL"
 
 
 def obtener_o_crear_cliente_generico() -> dict:
@@ -273,7 +274,7 @@ def obtener_o_crear_cliente_generico() -> dict:
 
 
 def es_cliente_generico(cliente: dict) -> bool:
-    return cliente["razon_social"] == NOMBRE_CLIENTE_GENERICO
+    return cliente["razon_social"].upper() == NOMBRE_CLIENTE_GENERICO
 
 
 _CAMPOS_EDITABLES = (
@@ -301,11 +302,11 @@ def agregar_contacto(
 ) -> dict:
     if obtener_cliente(cliente_id) is None:
         raise ClienteNoEncontradoError(f"No existe el cliente {cliente_id}")
-    nombre = nombre.strip()
+    nombre = textos.mayusculas(nombre)
     if not nombre:
         raise ValueError("El nombre del contacto no puede estar vacio")
     contacto_id = clientes_repo.crear_contacto(
-        cliente_id, nombre, _texto_o_none(email), _texto_o_none(telefono), _texto_o_none(sector), es_principal,
+        cliente_id, nombre, textos.email(_texto_o_none(email)), _texto_o_none(telefono), _texto_o_none(sector), es_principal,
     )
     log_service.registrar("cliente", cliente_id, f"Se agrego el contacto '{nombre}'")
     return obtener_cliente(cliente_id)
@@ -315,11 +316,11 @@ def editar_contacto(
     contacto_id: int, cliente_id: int, nombre: str, email: str | None, telefono: str | None,
     sector: str | None, es_principal: bool,
 ) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.mayusculas(nombre)
     if not nombre:
         raise ValueError("El nombre del contacto no puede estar vacio")
     clientes_repo.actualizar_contacto(
-        contacto_id, nombre, _texto_o_none(email), _texto_o_none(telefono), _texto_o_none(sector), es_principal,
+        contacto_id, nombre, textos.email(_texto_o_none(email)), _texto_o_none(telefono), _texto_o_none(sector), es_principal,
     )
     log_service.registrar("cliente", cliente_id, f"Se edito el contacto '{nombre}'")
     return obtener_cliente(cliente_id)

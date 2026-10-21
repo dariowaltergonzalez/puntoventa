@@ -33,6 +33,21 @@ def aplicar_mascara_moneda(field: ft.TextField) -> None:
     field.on_blur = on_blur
 
 
+def aplicar_formato_texto(funcion, *campos: ft.TextField) -> None:
+    """Al salir del campo, muestra el texto con el formato con que se va a guardar (una funcion de
+    app/shared/textos.py: mayusculas, email...). El servicio lo aplica igual al
+    guardar: esto es solo para que no sea una sorpresa."""
+    for campo in campos:
+        def on_blur(e: ft.ControlEvent, campo=campo, handler_previo=campo.on_blur) -> None:
+            if campo.value:
+                campo.value = funcion(campo.value)
+            if handler_previo:
+                handler_previo(e)
+            e.page.update()
+
+        campo.on_blur = on_blur
+
+
 def parsear_decimal_ar_opcional(valor: str | None, etiqueta: str) -> Decimal | None:
     """Parsea un texto que puede o no venir con formato argentino (punto de miles,
     coma decimal) -- sirve tanto para un campo con mascara de moneda como para uno

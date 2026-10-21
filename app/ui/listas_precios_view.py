@@ -4,7 +4,7 @@ import flet as ft
 
 from app.services import categorias_service, listas_precios_service, productos_service
 from app.shared.money import formatear_porcentaje, formatear_precio
-from app.ui.campos import FILTRO_DECIMALES_CON_SIGNO, aplicar_mascara_moneda, parsear_decimal_ar_opcional
+from app.ui.campos import FILTRO_DECIMALES_CON_SIGNO, aplicar_formato_texto, aplicar_mascara_moneda, parsear_decimal_ar_opcional
 from app.ui.componentes import (
     ESPACIO_PANTALLA,
     ERRORES_PARA_AVISAR,
@@ -26,6 +26,7 @@ from app.ui.componentes import (
     tarjeta,
 )
 from app.ui.theme import COLOR_TEXT_SOFT
+from app.shared import textos
 
 
 def _decimal_opcional(valor: str | None, etiqueta: str) -> Decimal | None:
@@ -101,6 +102,7 @@ def ListasPreciosView(page: ft.Page) -> ft.Control:
     form_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     guardar_texto = ft.Text("")
     nombre_field = ft.TextField(label="Nombre *", width=300)
+    aplicar_formato_texto(textos.mayusculas, nombre_field)
     porcentaje_general_field = ft.TextField(label="% general (opcional)", width=220, hint_text="-15 descuento, 15 recargo",
                                             input_filter=FILTRO_DECIMALES_CON_SIGNO)
 

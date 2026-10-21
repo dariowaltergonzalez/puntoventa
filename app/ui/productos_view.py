@@ -23,6 +23,8 @@ from app.ui.componentes import (
     tarjeta,
 )
 from app.ui.theme import COLOR_DANGER
+from app.shared import textos
+from app.ui.campos import aplicar_formato_texto
 
 
 def ProductosView(page: ft.Page) -> ft.Control:
@@ -107,6 +109,7 @@ def ProductosView(page: ft.Page) -> ft.Control:
     codigo_barra_field = ft.TextField(label="Codigo de barras (opcional)", width=240)
     proveedor_dropdown = ft.Dropdown(label="Proveedor (opcional)", width=280, options=[], value="")
     descripcion_field = ft.TextField(label="Descripcion (opcional)", multiline=True, min_lines=1, max_lines=3, expand=True)
+    aplicar_formato_texto(textos.mayusculas, codigo_field, nombre_field)
 
     def parsear_decimal(valor: str, etiqueta: str) -> Decimal:
         try:

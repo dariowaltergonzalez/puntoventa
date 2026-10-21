@@ -3,6 +3,7 @@ import sqlite3
 from app.repositories import categorias_repo
 from app.services import log_service
 from app.services.exceptions import CategoriaDuplicadaError, CategoriaNoEncontradaError
+from app.shared import textos
 
 
 def _a_dict(fila: sqlite3.Row) -> dict:
@@ -10,7 +11,7 @@ def _a_dict(fila: sqlite3.Row) -> dict:
 
 
 def crear_categoria(nombre: str) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.mayusculas(nombre)
     if not nombre:
         raise ValueError("El nombre de la categoria no puede estar vacio")
 
@@ -24,7 +25,7 @@ def crear_categoria(nombre: str) -> dict:
 
 
 def actualizar_categoria(categoria_id: int, nombre: str) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.mayusculas(nombre)
     if not nombre:
         raise ValueError("El nombre de la categoria no puede estar vacio")
 

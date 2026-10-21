@@ -15,6 +15,7 @@ from app.repositories import gastos_repo
 from app.services import log_service, medios_pago_service, negocio_service
 from app.services.exceptions import GastoNoEncontradoError
 from app.shared.money import entero_a_porcentaje, entero_a_precio, formatear_precio, porcentaje_a_entero, precio_a_entero
+from app.shared import textos
 
 ALICUOTAS = (Decimal("0"), Decimal("10.5"), Decimal("21"), Decimal("27"))
 EXTENSIONES_COMPROBANTE = ("jpg", "jpeg", "png", "webp", "pdf")
@@ -64,7 +65,7 @@ def listar_categorias() -> list[dict]:
 
 
 def crear_categoria(nombre: str) -> dict:
-    nombre = (nombre or "").strip()
+    nombre = textos.primera_mayuscula(nombre or "")
     if not nombre:
         raise ValueError("El nombre de la categoria no puede estar vacio")
     if any(c["nombre"].lower() == nombre.lower() for c in listar_categorias()):

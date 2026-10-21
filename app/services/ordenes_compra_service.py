@@ -15,6 +15,7 @@ from app.services.exceptions import (
     ProveedorNoEncontradoError,
 )
 from app.shared.money import cantidad_a_entero, entero_a_cantidad, entero_a_porcentaje, entero_a_precio, porcentaje_a_entero, precio_a_entero
+from app.shared import textos
 
 
 def _resolver_proveedor(
@@ -66,8 +67,8 @@ def _validar_items(items: list[dict], permitir_producto_nuevo: bool = False) -> 
             if not producto["activo"]:
                 raise ProductoInactivoError(f"El producto '{producto['nombre']}' esta inactivo")
         elif producto_nuevo is not None:
-            codigo = (producto_nuevo.get("codigo") or "").strip()
-            nombre = (producto_nuevo.get("nombre") or "").strip()
+            codigo = textos.mayusculas(producto_nuevo.get("codigo") or "")
+            nombre = textos.mayusculas(producto_nuevo.get("nombre") or "")
             if not codigo or not nombre:
                 raise ValueError("Los productos nuevos requieren codigo y nombre")
             if productos_repo.obtener_por_codigo(codigo) is not None:

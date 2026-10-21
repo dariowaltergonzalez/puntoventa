@@ -10,6 +10,7 @@ from app.services.exceptions import (
     ProductoNoEncontradoError,
 )
 from app.shared.money import cantidad_a_entero, entero_a_cantidad, entero_a_precio, precio_a_entero
+from app.shared import textos
 
 _CAMPOS_LOG = [
     "codigo", "nombre", "categoria", "unidad", "precio_costo", "precio_venta",
@@ -85,14 +86,14 @@ def crear_producto(
     codigo_barra: str | None = None,
     proveedor_id: int | None = None,
 ) -> dict:
-    codigo = codigo.strip()
+    codigo = textos.mayusculas(codigo)
     codigo_barra = _texto_o_none(codigo_barra)
     _validar_datos(codigo, categoria_id, precio_costo, precio_venta, stock_minimo)
 
     try:
         producto_id = productos_repo.crear(
             codigo=codigo,
-            nombre=nombre.strip(),
+            nombre=textos.mayusculas(nombre),
             categoria_id=categoria_id,
             unidad=unidad.strip(),
             precio_costo=precio_a_entero(precio_costo),
@@ -126,7 +127,7 @@ def actualizar_producto(
     codigo_barra: str | None = None,
     proveedor_id: int | None = None,
 ) -> dict:
-    codigo = codigo.strip()
+    codigo = textos.mayusculas(codigo)
     codigo_barra = _texto_o_none(codigo_barra)
     _validar_datos(codigo, categoria_id, precio_costo, precio_venta, stock_minimo)
 
@@ -138,7 +139,7 @@ def actualizar_producto(
         productos_repo.actualizar(
             producto_id=producto_id,
             codigo=codigo,
-            nombre=nombre.strip(),
+            nombre=textos.mayusculas(nombre),
             categoria_id=categoria_id,
             unidad=unidad.strip(),
             precio_costo=precio_a_entero(precio_costo),

@@ -10,6 +10,7 @@ from app.services.exceptions import (
     ProductoNoEncontradoError,
 )
 from app.shared.money import entero_a_porcentaje, entero_a_precio, porcentaje_a_entero, precio_a_entero
+from app.shared import textos
 
 _CAMPOS_LOG = ["nombre", "porcentaje_general", "activo"]
 
@@ -24,7 +25,7 @@ def _a_dict(fila: sqlite3.Row) -> dict:
 
 
 def crear_lista(nombre: str, porcentaje_general: Decimal | None = None) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.mayusculas(nombre)
     if not nombre:
         raise ValueError("El nombre de la lista de precios no puede estar vacio")
     try:
@@ -38,7 +39,7 @@ def crear_lista(nombre: str, porcentaje_general: Decimal | None = None) -> dict:
 
 
 def actualizar_lista(lista_id: int, nombre: str, porcentaje_general: Decimal | None, activo: bool) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.mayusculas(nombre)
     if not nombre:
         raise ValueError("El nombre de la lista de precios no puede estar vacio")
     antes = obtener_lista(lista_id)

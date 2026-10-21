@@ -19,6 +19,8 @@ from app.ui.componentes import (
     etiqueta_estado,
     tarjeta,
 )
+from app.shared import textos
+from app.ui.campos import aplicar_formato_texto
 
 
 def ProveedoresView(page: ft.Page) -> ft.Control:
@@ -85,6 +87,9 @@ def ProveedoresView(page: ft.Page) -> ft.Control:
     email_field = ft.TextField(label="Email (opcional)", expand=True)
     direccion_field = ft.TextField(label="Direccion (opcional)", expand=True)
     observaciones_field = ft.TextField(label="Observaciones (opcional)", multiline=True, min_lines=1, max_lines=3, expand=True)
+    aplicar_formato_texto(textos.mayusculas, nombre_field)
+    aplicar_formato_texto(textos.mayusculas, contacto_field)
+    aplicar_formato_texto(textos.email, email_field)
     campos = {"nombre": nombre_field, "cuit": cuit_field, "contacto": contacto_field, "telefono": telefono_field,
               "email": email_field, "direccion": direccion_field, "observaciones": observaciones_field}
 

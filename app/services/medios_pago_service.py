@@ -3,6 +3,7 @@ import sqlite3
 from app.repositories import medios_pago_repo
 from app.services import log_service
 from app.services.exceptions import MedioPagoDuplicadoError, MedioPagoNoEncontradoError
+from app.shared import textos
 
 _CAMPOS_LOG = ["nombre", "es_cuenta_corriente", "activo"]
 
@@ -17,7 +18,7 @@ def _a_dict(fila: sqlite3.Row) -> dict:
 
 
 def crear_medio_pago(nombre: str, es_cuenta_corriente: bool = False) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.primera_mayuscula(nombre)
     if not nombre:
         raise ValueError("El nombre del medio de pago no puede estar vacio")
 
@@ -31,7 +32,7 @@ def crear_medio_pago(nombre: str, es_cuenta_corriente: bool = False) -> dict:
 
 
 def actualizar_medio_pago(medio_pago_id: int, nombre: str, es_cuenta_corriente: bool, activo: bool) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.primera_mayuscula(nombre)
     if not nombre:
         raise ValueError("El nombre del medio de pago no puede estar vacio")
 

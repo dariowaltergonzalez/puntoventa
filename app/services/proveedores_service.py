@@ -3,10 +3,11 @@ import sqlite3
 from app.repositories import proveedores_repo
 from app.services import log_service
 from app.services.exceptions import ProveedorDuplicadoError, ProveedorNoEncontradoError
+from app.shared import textos
 
 _CAMPOS_LOG = ["nombre", "cuit", "contacto", "telefono", "email", "direccion", "observaciones", "activo"]
 
-NOMBRE_PROVEEDOR_GENERICO = "Proveedor Generico"
+NOMBRE_PROVEEDOR_GENERICO = "PROVEEDOR GENERICO"
 
 
 def _a_dict(fila: sqlite3.Row) -> dict:
@@ -37,7 +38,7 @@ def crear_proveedor(
     direccion: str | None = None,
     observaciones: str | None = None,
 ) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.mayusculas(nombre)
     if not nombre:
         raise ValueError("El nombre del proveedor no puede estar vacio")
 
@@ -45,9 +46,9 @@ def crear_proveedor(
         proveedor_id = proveedores_repo.crear(
             nombre=nombre,
             cuit=_texto_o_none(cuit),
-            contacto=_texto_o_none(contacto),
+            contacto=textos.mayusculas(_texto_o_none(contacto)),
             telefono=_texto_o_none(telefono),
-            email=_texto_o_none(email),
+            email=textos.email(_texto_o_none(email)),
             direccion=_texto_o_none(direccion),
             observaciones=_texto_o_none(observaciones),
         )
@@ -69,7 +70,7 @@ def actualizar_proveedor(
     observaciones: str | None,
     activo: bool,
 ) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.mayusculas(nombre)
     if not nombre:
         raise ValueError("El nombre del proveedor no puede estar vacio")
 
@@ -82,9 +83,9 @@ def actualizar_proveedor(
             proveedor_id=proveedor_id,
             nombre=nombre,
             cuit=_texto_o_none(cuit),
-            contacto=_texto_o_none(contacto),
+            contacto=textos.mayusculas(_texto_o_none(contacto)),
             telefono=_texto_o_none(telefono),
-            email=_texto_o_none(email),
+            email=textos.email(_texto_o_none(email)),
             direccion=_texto_o_none(direccion),
             observaciones=_texto_o_none(observaciones),
             activo=1 if activo else 0,
@@ -116,7 +117,7 @@ def listar_proveedores(solo_activos: bool = False) -> list[dict]:
 
 
 def obtener_o_crear_proveedor_por_nombre(nombre: str) -> dict:
-    nombre = nombre.strip()
+    nombre = textos.mayusculas(nombre)
     if not nombre:
         raise ValueError("El nombre del proveedor no puede estar vacio")
     return _a_dict(proveedores_repo.obtener_o_crear_por_nombre(nombre))

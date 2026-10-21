@@ -4,7 +4,14 @@ import flet as ft
 
 from app.services import clientes_service, condiciones_iva_service, listas_precios_service
 from app.shared.money import formatear_porcentaje, formatear_precio
-from app.ui.campos import FILTRO_CUIT, FILTRO_DECIMALES, FILTRO_ENTEROS, aplicar_mascara_moneda, parsear_decimal_ar_opcional
+from app.ui.campos import (
+    FILTRO_CUIT,
+    FILTRO_DECIMALES,
+    FILTRO_ENTEROS,
+    aplicar_formato_texto,
+    aplicar_mascara_moneda,
+    parsear_decimal_ar_opcional,
+)
 from app.ui.componentes import (
     ESPACIO_PANTALLA,
     ERRORES_PARA_AVISAR,
@@ -29,6 +36,7 @@ from app.ui.componentes import (
     ventana_info,
 )
 from app.ui.theme import COLOR_TEXT_SOFT
+from app.shared import textos
 
 
 def _decimal_opcional(valor: str | None, etiqueta: str) -> Decimal | None:
@@ -173,7 +181,10 @@ def ClientesView(page: ft.Page) -> ft.Control:
     bloquear_limite_switch = ft.Switch(label="Bloquear al superar el limite")
     tasa_mora_field = ft.TextField(label="Interes por mora diario % (opcional)", width=240, input_filter=FILTRO_DECIMALES)
     observacion_field = ft.TextField(label="Observacion (opcional)", expand=True, multiline=True, min_lines=1, max_lines=3)
-    textos = {
+    aplicar_formato_texto(textos.mayusculas, razon_social_field)
+    aplicar_formato_texto(textos.mayusculas, contacto_principal_field)
+    aplicar_formato_texto(textos.email, email_field)
+    campos_texto = {
         "razon_social": razon_social_field, "nombre_fantasia": nombre_fantasia_field, "dni": dni_field, "cuit": cuit_field,
         "contacto_principal": contacto_principal_field, "telefono": telefono_field, "email": email_field,
         "direccion": direccion_field, "ciudad": ciudad_field, "provincia": provincia_field, "codigo_postal": codigo_postal_field,
@@ -186,7 +197,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
         c = editando or {}
         form_titulo.value = f"Editar cliente: {c['razon_social']}" if editando else "Nuevo cliente"
         guardar_texto.value = "Guardar cambios" if editando else "Crear cliente"
-        for clave, campo in textos.items():
+        for clave, campo in campos_texto.items():
             campo.value = c.get(clave) or ""
         condicion_iva_dropdown.value = str(c["condicion_iva_id"]) if c.get("condicion_iva_id") is not None else ""
         plazo_pago_field.value = str(c["plazo_pago_dias"]) if c.get("plazo_pago_dias") is not None else ""
@@ -210,7 +221,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
 
     def guardar() -> None:
         try:
-            datos = {clave: campo.value for clave, campo in textos.items()}
+            datos = {clave: campo.value for clave, campo in campos_texto.items()}
             datos["razon_social"] = datos["razon_social"] or ""
             datos.update(
                 condicion_iva_id=int(condicion_iva_dropdown.value) if condicion_iva_dropdown.value else None,
@@ -239,6 +250,8 @@ def ClientesView(page: ft.Page) -> ft.Control:
     contacto_email_field = ft.TextField(label="Email (opcional)", width=220)
     contacto_telefono_field = ft.TextField(label="Telefono (opcional)", width=160)
     contacto_principal_switch = ft.Switch(label="Es el principal")
+    aplicar_formato_texto(textos.mayusculas, contacto_nombre_field)
+    aplicar_formato_texto(textos.email, contacto_email_field)
     listas_tabla = ft.Column(spacing=6)
     listas_dropdown = ft.Dropdown(label="Lista de precios", width=250, options=[])
 
@@ -285,7 +298,7 @@ def ClientesView(page: ft.Page) -> ft.Control:
             editando["id"], contacto_nombre_field.value or "", contacto_email_field.value,
             contacto_telefono_field.value, contacto_sector_field.value, contacto_principal_switch.value,
         )
-        nombre = contacto_nombre_field.value
+        nombre = textos.mayusculas(contacto_nombre_field.value or "")
         for campo in (contacto_nombre_field, contacto_sector_field, contacto_email_field, contacto_telefono_field):
             campo.value = ""
         contacto_principal_switch.value = False

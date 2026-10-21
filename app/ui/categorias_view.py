@@ -15,6 +15,8 @@ from app.ui.componentes import (
     encabezado_pantalla,
     tarjeta,
 )
+from app.shared import textos
+from app.ui.campos import aplicar_formato_texto
 
 
 def CategoriasView(page: ft.Page) -> ft.Control:
@@ -55,6 +57,7 @@ def CategoriasView(page: ft.Page) -> ft.Control:
     form_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     guardar_texto = ft.Text("")
     nombre_field = ft.TextField(label="Nombre *", width=360)
+    aplicar_formato_texto(textos.mayusculas, nombre_field)
 
     def ir_a_formulario(categoria: dict | None) -> None:
         nonlocal editando

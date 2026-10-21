@@ -795,3 +795,12 @@ INSERT INTO categorias_gasto (nombre)
         UNION ALL SELECT 'Insumos del local' UNION ALL SELECT 'Otros')
     WHERE NOT EXISTS (SELECT 1 FROM categorias_gasto);
 CREATE INDEX IF NOT EXISTS idx_gastos_fecha ON gastos (fecha);
+
+-- Migraciones de datos que corren una sola vez (app/db/connection.py). Una base nueva ya nace
+-- con los datos en el formato actual, asi que se marcan como hechas.
+CREATE TABLE IF NOT EXISTS migraciones_datos (
+    nombre  TEXT PRIMARY KEY,
+    fecha   TEXT NOT NULL
+);
+INSERT OR IGNORE INTO migraciones_datos (nombre, fecha) VALUES ('formato_textos', datetime('now'));
+INSERT OR IGNORE INTO migraciones_datos (nombre, fecha) VALUES ('contactos_en_mayusculas', datetime('now'));

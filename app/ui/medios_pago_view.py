@@ -19,6 +19,8 @@ from app.ui.componentes import (
     etiqueta_estado,
     tarjeta,
 )
+from app.shared import textos
+from app.ui.campos import aplicar_formato_texto
 
 
 def MediosPagoView(page: ft.Page) -> ft.Control:
@@ -67,6 +69,7 @@ def MediosPagoView(page: ft.Page) -> ft.Control:
     form_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
     guardar_texto = ft.Text("")
     nombre_field = ft.TextField(label="Nombre *", width=360)
+    aplicar_formato_texto(textos.primera_mayuscula, nombre_field)
     cuenta_corriente_switch = ft.Switch(label="Es cuenta corriente (genera un cargo en Cuentas Corrientes)")
 
     def ir_a_formulario(medio: dict | None) -> None:

@@ -245,9 +245,10 @@ def accion_cambiar(icono: ft.IconData, tooltip: str, al_apretar: Callable[[], st
                    por_que_no: str | None = None) -> ft.IconButton:
     """Tipo 3: cambia al instante. al_apretar hace el cambio, refresca la lista y devuelve el aviso."""
     def click(e: ft.ControlEvent) -> None:
-        ok, aviso = _ejecutar(e.page, al_apretar)
+        pagina = e.page  # antes de refrescar: al redibujar la lista este boton deja de existir
+        ok, aviso = _ejecutar(pagina, al_apretar)
         if ok and aviso:
-            avisar(e.page, aviso)
+            avisar(pagina, aviso)
     return _boton_accion(icono, tooltip, por_que_no, click)
 
 
@@ -278,15 +279,16 @@ def accion_proceso(icono: ft.IconData, tooltip: str, al_apretar: Callable[[], st
     ruedita = ft.ProgressRing(width=18, height=18, stroke_width=2)
 
     def click(e: ft.ControlEvent) -> None:
+        pagina = e.page  # antes de refrescar: al redibujar la lista este boton deja de existir
         contenedor.content = ruedita
-        e.page.update()
+        pagina.update()
         try:
-            ok, aviso = _ejecutar(e.page, al_apretar)
+            ok, aviso = _ejecutar(pagina, al_apretar)
         finally:
             contenedor.content = boton
-            e.page.update()
+            pagina.update()
         if ok and aviso:
-            avisar(e.page, aviso)
+            avisar(pagina, aviso)
 
     boton = _boton_accion(icono, tooltip, por_que_no, click)
     contenedor.content = boton
@@ -471,12 +473,13 @@ class Lista:
         self._dibujar_paginado()
 
     def _alternar(self, e: ft.ControlEvent, k) -> None:
+        pagina = e.page  # antes de redibujar: la flecha que se apreto deja de existir
         if k in self._abiertas:
             self._abiertas.remove(k)
         else:
             self._abiertas.add(k)
         self._dibujar()
-        e.page.update()
+        pagina.update()
 
     # ---------- paginado ----------
     def _ir(self, pagina: int) -> None:
