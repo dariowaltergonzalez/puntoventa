@@ -72,6 +72,7 @@ cuenta corriente), la fila lleva una **flecha a la izquierda** que la despliega 
 | Cuentas corrientes | lo que queda por pagar + últimos pagos |
 | Listas de precios | % por categoría + precios a mano |
 | Clientes | contactos + listas asignadas |
+| Ventas confirmadas (en la caja) | productos + pagos + notas de crédito |
 
 ## 5. Acciones de una fila: 5 tipos
 
@@ -110,6 +111,9 @@ Reglas para todos los íconos:
 | Dar de baja (sale sin anular: depositado, cobrado) | `ARCHIVE` |
 | Cuenta corriente | `ACCOUNT_BALANCE_WALLET` |
 | Abrir en la caja | `POINT_OF_SALE` |
+| Retomar en la caja (pre-venta) | `SHOPPING_CART_CHECKOUT` |
+| Nota de crédito / devolución | `ASSIGNMENT_RETURN` |
+| Volver (botón de la barra) | `ARROW_BACK` |
 | Ver comprobante adjunto | `ATTACH_FILE` |
 | Desplegar hijos | `CHEVRON_RIGHT` (abierta: `EXPAND_MORE`) |
 | Quitar un hijo (dentro del formulario) | `CLOSE` |
@@ -150,8 +154,9 @@ cómo arreglarlo: "Escribí el motivo para poder cancelar".
 
 ## 9. Excepciones (pantallas que no son de lista)
 
-- **Ventas (la caja)**: pantalla de trabajo propia, su función es cargar rápido. *Pendiente*: su historial
-  de ventas y la lista de pre-ventas todavía usan el paginador viejo (`listados.Paginador`).
+- **Ventas (la caja)**: pantalla de trabajo propia, su función es cargar rápido. Sus pantallas
+  secundarias sí son estándar: Ventas confirmadas (lista con fechas, filas desplegables, nota de
+  crédito y corregir venta como acciones), Pre-ventas de hoy (retomar, descartar con motivo).
 - **Movimientos**: es para cargar ajustes de stock; el formulario queda a la vista (la lista de abajo sí es
   una `Lista` estándar).
 - **Ganancias**: es un tablero (números y gráficos), no una lista.

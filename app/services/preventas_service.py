@@ -224,10 +224,10 @@ def _exigir_abierta(preventa_id: int) -> sqlite3.Row:
 def descartar_preventa(preventa_id: int, motivo: str | None = None) -> None:
     fila = _exigir_abierta(preventa_id)
     motivo = _texto_o_none(motivo)
+    if not motivo:
+        raise ValueError("Descartar una pre-venta requiere indicar el motivo")
     borradores_repo.descartar(preventa_id, motivo)
-    log_service.registrar(
-        "preventa", preventa_id, f"Se descarto la pre-venta '{fila['nombre']}'" + (f": {motivo}" if motivo else ""),
-    )
+    log_service.registrar("preventa", preventa_id, f"Se descarto la pre-venta '{fila['nombre']}': {motivo}")
 
 
 def hora(fecha_iso: str) -> str:

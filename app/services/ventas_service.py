@@ -518,12 +518,18 @@ def listar_ventas(estado: str | None = None, cliente_id: int | None = None) -> l
 def listar_ventas_pagina(
     pagina: int, tamano_pagina: int, texto: str | None = None,
     estado: str | None = None, cliente_id: int | None = None,
+    desde: date | None = None, hasta: date | None = None, orden: str = "fecha", descendente: bool = True,
 ) -> dict:
     """Version paginada de `listar_ventas` -- esa recalcula el detalle completo (items, pagos,
     totales) de TODAS las ventas de la historia en cada refresco, aunque la pantalla solo
     muestre numero/cliente/fecha/total de una pagina a la vez. Esta solo hace ese calculo caro
     para las ventas de la pagina pedida. Devuelve {'items': [...], 'total': N}."""
-    filas, total = ventas_repo.listar_pagina(pagina, tamano_pagina, texto, estado, cliente_id)
+    if desde and hasta and desde > hasta:
+        raise ValueError("La fecha 'desde' no puede ser posterior a 'hasta'")
+    filas, total = ventas_repo.listar_pagina(
+        pagina, tamano_pagina, texto, estado, cliente_id,
+        desde.isoformat() if desde else None, hasta.isoformat() if hasta else None, orden, descendente,
+    )
     return {"items": [obtener_venta(f["id"]) for f in filas], "total": total}
 
 

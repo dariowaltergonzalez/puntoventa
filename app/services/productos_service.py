@@ -193,7 +193,7 @@ def listar_productos_pagina(
 ) -> dict:
     """Para catalogos grandes: trae solo la pagina pedida en vez de todos los productos.
     Devuelve {'items': [...], 'total': N} -- 'total' es el total de registros que matchean
-    el filtro (sin paginar), lo que necesita el Paginador de la UI para saber cuantas
+    el filtro (sin paginar), lo que necesita la Lista de la UI para saber cuantas
     paginas hay en total."""
     filas, total = productos_repo.listar_pagina(pagina, tamano_pagina, texto, solo_activos, categoria_id, orden, descendente)
     return {"items": [_a_dict(fila) for fila in filas], "total": total}

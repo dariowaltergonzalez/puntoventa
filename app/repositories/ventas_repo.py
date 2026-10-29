@@ -205,9 +205,15 @@ def listar(estado: str | None = None, cliente_id: int | None = None) -> list[sql
         conn.close()
 
 
+# Columnas por las que el historial puede ordenar. Lista cerrada a proposito: el ORDER BY nunca se
+# arma con lo que llega de afuera. (El total no esta: se calcula, no se guarda.)
+ORDEN_PAGINA = {"fecha": "v.fecha", "numero": "v.numero", "cliente": "c.razon_social COLLATE NOCASE"}
+
+
 def listar_pagina(
     pagina: int, tamano_pagina: int, texto: str | None = None,
     estado: str | None = None, cliente_id: int | None = None,
+    desde: str | None = None, hasta: str | None = None, orden: str = "fecha", descendente: bool = True,
 ) -> tuple[list[sqlite3.Row], int]:
     """Version paginada de `listar` -- esa trae TODAS las ventas de la historia del negocio
     sin limite; esta solo pide la pagina pedida. 'texto' busca por numero de venta o razon
@@ -226,11 +232,18 @@ def listar_pagina(
             condiciones.append("(v.numero LIKE ? OR c.razon_social LIKE ?)")
             comodin = f"%{texto}%"
             parametros.extend([comodin, comodin])
+        if desde:
+            condiciones.append("substr(v.fecha, 1, 10) >= ?")
+            parametros.append(desde)
+        if hasta:
+            condiciones.append("substr(v.fecha, 1, 10) <= ?")
+            parametros.append(hasta)
 
         sql = "SELECT v.* FROM ventas v LEFT JOIN clientes c ON c.id = v.cliente_id"
         if condiciones:
             sql += " WHERE " + " AND ".join(condiciones)
-        sql += " ORDER BY v.fecha DESC, v.id DESC"
+        direccion = "DESC" if descendente else "ASC"
+        sql += f" ORDER BY {ORDEN_PAGINA.get(orden, ORDEN_PAGINA['fecha'])} {direccion}, v.id {direccion}"
 
         return paginar(conn, sql, parametros, pagina, tamano_pagina)
     finally:

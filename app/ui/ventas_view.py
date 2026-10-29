@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 import flet as ft
@@ -33,7 +33,30 @@ from app.services.exceptions import (
 )
 from app.shared.money import formatear_cantidad, formatear_porcentaje, formatear_precio
 from app.ui.campos import FILTRO_DECIMALES, aplicar_mascara_moneda, parsear_decimal_ar_opcional
-from app.ui.listados import Paginador, con_scroll_horizontal
+from app.ui.componentes import (
+    ESPACIO_PANTALLA,
+    ERRORES_PARA_AVISAR,
+    TONO_CURSO,
+    TONO_ESPERA,
+    TONO_NO,
+    TONO_OK,
+    Columna,
+    Lista,
+    accion_abrir,
+    accion_anular,
+    accion_ver,
+    avisar,
+    barra,
+    boton_secundario,
+    campo_buscar,
+    dato,
+    encabezado_pantalla,
+    etiqueta_estado,
+    rotulo,
+    tabla_simple,
+    tarjeta,
+    ventana_info,
+)
 from app.ui.theme import (
     COLOR_ACCENT,
     COLOR_ACCENT_STRONG,
@@ -41,7 +64,6 @@ from app.ui.theme import (
     COLOR_ACTION,
     COLOR_ACTION_STRONG,
     COLOR_ACTION_WASH,
-    COLOR_BG,
     COLOR_BG_ALT,
     COLOR_BORDER,
     COLOR_DANGER,
@@ -1370,81 +1392,153 @@ def VentasView(page: ft.Page) -> ft.Control:
     btn_cobrar.on_click = abrir_cobro_click
 
     # ================= SECCION HISTORIAL (ventas ya confirmadas) =================
-    buscador_field = ft.TextField(label="Buscar por numero o cliente", expand=True)
-    tabla_historial = ft.DataTable(columns=[ft.DataColumn(ft.Text(t)) for t in ["Numero", "Cliente", "Fecha", "Total", ""]], rows=[])
-    paginador = Paginador(on_cambio=lambda: refrescar_lista_historial())
+    historial_buscador = campo_buscar("Numero o cliente", al_cambiar=lambda: filtrar_historial())
+    historial_desde = ft.TextField(label="Desde", hint_text="AAAA-MM-DD", width=140, on_submit=lambda e: aplicar_fechas_historial())
+    historial_hasta = ft.TextField(label="Hasta", hint_text="AAAA-MM-DD", width=140, on_submit=lambda e: aplicar_fechas_historial())
+    # Las fechas se aplican recien con Filtrar; el buscador filtra al instante con las ultimas aplicadas.
+    historial_fechas: dict = {"desde": None, "hasta": None}
+    lista_ventas = Lista(
+        [
+            Columna("Numero", ancho=100, orden="numero"), Columna("Cliente", peso=3, orden="cliente"),
+            Columna("Fecha", ancho=140, orden="fecha"), Columna("Total ($)", ancho=160, derecha=True),
+            Columna("Estado", ancho=170), Columna("Acciones", ancho=130, derecha=True),
+        ],
+        al_cambiar_pagina=lambda: refrescar_lista_historial(), nombre="ventas", con_hijos=True,
+        orden_inicial=("fecha", True), sin_datos="Ninguna venta coincide con los filtros.",
+    )
+
+    def fecha_hora(iso: str) -> str:
+        return datetime.fromisoformat(iso).strftime("%d/%m/%Y %H:%M")
+
+    def subtotal_linea(i: dict) -> Decimal:
+        monto = i["cantidad"] * i["precio_unitario"]
+        if i["descuento_item_porcentaje"] is not None:
+            monto = monto * (Decimal("1") - i["descuento_item_porcentaje"] / Decimal("100"))
+        return monto.quantize(Decimal("1.00"))
 
     def celda_total_historial(v: dict) -> ft.Control:
         if not v["notas_credito"]:
-            return ft.Text(formatear_precio(v["total"]))
+            return ft.Text(formatear_precio(v["total"]), weight=ft.FontWeight.BOLD)
         # Con notas de credito se muestra lo que realmente quedo vendido (el neto).
         return ft.Row([
-            ft.Text(formatear_precio(v["total_neto"])),
-            ft.Container(
-                ft.Text("con NC", size=11, color=COLOR_WARNING, italic=True),
-                tooltip=f"Vendido {formatear_precio(v['total'])} - acreditado {formatear_precio(v['total_acreditado'])}",
-            ),
-        ], spacing=6)
+            ft.Container(ft.Text("con NC", size=11, color=COLOR_WARNING, italic=True),
+                         tooltip=f"Vendido {formatear_precio(v['total'])} - acreditado {formatear_precio(v['total_acreditado'])}"),
+            ft.Text(formatear_precio(v["total_neto"]), weight=ft.FontWeight.BOLD),
+        ], spacing=6, tight=True)
 
-    def refrescar_lista_historial(e: ft.ControlEvent | None = None) -> None:
-        resultado = ventas_service.listar_ventas_pagina(
-            pagina=paginador.pagina_actual, tamano_pagina=paginador.tamano_pagina,
-            texto=buscador_field.value or None,
-        )
-        paginador.fijar_total(resultado["total"])
-        tabla_historial.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(v["numero"])),
-                ft.DataCell(ft.Text(v["cliente_nombre"] or "-")),
-                ft.DataCell(ft.Text(v["fecha"][:16])),
-                ft.DataCell(celda_total_historial(v)),
-                ft.DataCell(ft.IconButton(ft.Icons.VISIBILITY, tooltip="Ver detalle", data=v["id"],
-                                            on_click=lambda e: ir_a_detalle_historial(e.control.data))),
-            ])
-            for v in resultado["items"]
+    def etiqueta_venta(v: dict) -> ft.Control:
+        if not v["notas_credito"]:
+            return etiqueta_estado("Confirmada", TONO_OK)
+        if v["queda_por_acreditar"]:
+            return etiqueta_estado("Con nota de credito", TONO_CURSO)
+        return etiqueta_estado("Devuelta toda", TONO_NO)
+
+    def hijos_venta(v: dict) -> ft.Control:
+        partes = [
+            ft.Column([rotulo("Productos"), tabla_simple(
+                ["Producto / descripcion", "Cantidad", "Devuelto", "Precio", "% desc.", "Subtotal"],
+                [[i["descripcion_libre"] or f"{i['producto_codigo']} - {i['producto_nombre']}",
+                  formatear_cantidad(i["cantidad"]),
+                  ft.Text(formatear_cantidad(i["cantidad_devuelta"]), color=COLOR_WARNING) if i["cantidad_devuelta"] > 0 else "-",
+                  formatear_precio(i["precio_unitario"]),
+                  f"{formatear_porcentaje(i['descuento_item_porcentaje'])}%" if i["descuento_item_porcentaje"] is not None else "-",
+                  formatear_precio(subtotal_linea(i))] for i in v["items"]],
+                derecha=[1, 2, 3, 4, 5],
+            )], spacing=6),
+            ft.Column([rotulo("Pagos"), tabla_simple(
+                ["Medio de pago", "Monto", "Recibio", "Vuelto"],
+                [[p["medio_pago_nombre"] + (" (cta. cte.)" if p["es_cuenta_corriente"] else ""), formatear_precio(p["monto"]),
+                  formatear_precio(p["recibido"]) if p["recibido"] is not None else "-",
+                  formatear_precio(p["vuelto"]) if p["vuelto"] is not None else "-"] for p in v["pagos"]],
+                derecha=[1, 2, 3],
+            )], spacing=6),
         ]
-        page.update()
+        if v["notas_credito"]:
+            partes.append(ft.Column([rotulo("Notas de credito"), tabla_simple(
+                ["Numero", "Fecha", "Motivo", "Total"],
+                [[nc["numero"] + (" (correccion)" if nc["es_correccion"] else ""), fecha_hora(nc["fecha"]), nc["motivo"],
+                  formatear_precio(nc["total"])] for nc in v["notas_credito"]],
+                derecha=[3],
+            )], spacing=6))
+        return ft.Row(partes, spacing=28, vertical_alignment=ft.CrossAxisAlignment.START, wrap=True)
 
-    buscador_field.on_change = refrescar_lista_historial
+    def celdas_venta(v: dict) -> list:
+        sin_saldo = None if v["queda_por_acreditar"] else "ya se acredito todo"
+        return [
+            ft.Text(v["numero"], weight=ft.FontWeight.BOLD), v["cliente_nombre"],
+            ft.Text(fecha_hora(v["fecha"]), color=COLOR_TEXT_SOFT), celda_total_historial(v), etiqueta_venta(v),
+            ft.Row([
+                accion_ver(ft.Icons.VISIBILITY, "Ver totales y ganancia", lambda v=v: ver_venta(v)),
+                accion_abrir(ft.Icons.ASSIGNMENT_RETURN, "Nota de credito (devolucion)",
+                             lambda v=v: ir_a_nota_credito(v, "nota_credito"), por_que_no=sin_saldo),
+                accion_abrir(ft.Icons.EDIT, "Corregir venta", lambda v=v: ir_a_nota_credito(v, "corregir"), por_que_no=sin_saldo),
+            ], spacing=0, tight=True),
+        ]
+
+    def ver_venta(v: dict) -> None:
+        ganancia = ventas_service.detalle_ganancia_venta(v)
+        iva = texto_iva(int(v["iva_porcentaje"] * 100), v["precios_con_iva"]) if v["iva_porcentaje"] else "Sin IVA"
+        datos = [
+            dato("Fecha", fecha_hora(v["fecha"])),
+            dato("Cliente", v["cliente_nombre"] or "-"),
+            dato("IVA", iva),
+            dato("Total", f"$ {formatear_precio(v['total'])}  (neto {formatear_precio(v['neto'])} + IVA {formatear_precio(v['iva'])})"),
+        ]
+        if v["notas_credito"]:
+            datos.append(dato("Acreditado", f"$ {formatear_precio(v['total_acreditado'])}  ·  quedo vendido $ {formatear_precio(v['total_neto'])}"))
+        datos.append(dato("Ganancia", f"$ {formatear_precio(ganancia['ganancia'])}  (cobrado sin IVA {formatear_precio(ganancia['ingresos'])} "
+                                      f"- costo {formatear_precio(ganancia['costo'])})"))
+        if v["observacion"]:
+            datos.append(dato("Observacion", v["observacion"]))
+        ventana_info(page, f"Venta {v['numero']}", *datos)
+
+    def filtrar_historial() -> None:
+        lista_ventas.ir_al_principio()
+        refrescar_lista_historial()
+
+    def aplicar_fechas_historial() -> None:
+        try:
+            historial_fechas["desde"], historial_fechas["hasta"] = (
+                date.fromisoformat(campo.value.strip()) if (campo.value or "").strip() else None
+                for campo in (historial_desde, historial_hasta)
+            )
+        except ValueError:
+            avisar(page, "Las fechas van con formato AAAA-MM-DD (ej. 2026-10-01)", error=True)
+            return
+        filtrar_historial()
+
+    def refrescar_lista_historial() -> None:
+        try:
+            resultado = ventas_service.listar_ventas_pagina(
+                pagina=lista_ventas.pagina, tamano_pagina=lista_ventas.por_pagina, texto=historial_buscador.value or None,
+                desde=historial_fechas["desde"], hasta=historial_fechas["hasta"],
+                orden=lista_ventas.orden, descendente=lista_ventas.descendente,
+            )
+        except ERRORES_PARA_AVISAR as ex:
+            avisar(page, str(ex), error=True)
+            return
+        lista_ventas.mostrar(resultado["items"], celdas_venta, total=resultado["total"], hijos=hijos_venta)
+        page.update()
 
     seccion_historial = ft.Column(
         [
-            ft.Row([ft.Text("Ventas confirmadas", size=20, weight=ft.FontWeight.BOLD),
-                    ft.Container(expand=True), ft.TextButton("Volver a la caja", on_click=lambda e: mostrar_caja())]),
-            ft.Row([buscador_field]),
-            con_scroll_horizontal(tabla_historial),
-            paginador.controles,
+            encabezado_pantalla("Ventas confirmadas", "Lo vendido, con sus pagos y devoluciones. La flecha de cada venta muestra "
+                                                      "sus productos y pagos."),
+            barra(
+                [historial_buscador, historial_desde, historial_hasta,
+                 boton_secundario("Filtrar", ft.Icons.FILTER_LIST, aplicar_fechas_historial)],
+                [boton_secundario("Volver a la caja", ft.Icons.ARROW_BACK, lambda: mostrar_caja())],
+            ),
+            lista_ventas.control,
         ],
-        visible=False, expand=True, scroll=ft.ScrollMode.AUTO,
-        spacing=12,
+        visible=False, expand=True, scroll=ft.ScrollMode.AUTO, spacing=ESPACIO_PANTALLA,
     )
 
-    # ================= SECCION DETALLE (venta ya confirmada) =================
-    detalle_titulo = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
-    detalle_info = ft.Text("")
-    tabla_detalle_items = ft.DataTable(
-        columns=[ft.DataColumn(ft.Text(t)) for t in
-                 ["Producto / Descripcion", "Cantidad", "Devuelto", "Precio unit.", "% desc.", "Subtotal"]],
-        rows=[],
-    )
-    tabla_detalle_pagos = ft.DataTable(
-        columns=[ft.DataColumn(ft.Text(t)) for t in ["Medio de pago", "Monto", "Recibio", "Vuelto"]], rows=[],
-    )
-    detalle_total_texto = ft.Text("", size=18, weight=ft.FontWeight.BOLD)
-    detalle_neto_texto = ft.Text("", size=15, color=COLOR_WARNING)
-    detalle_ganancia_texto = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
-    titulo_notas_credito = ft.Text("Notas de credito", weight=ft.FontWeight.BOLD)
-    tabla_notas_credito = ft.DataTable(
-        columns=[ft.DataColumn(ft.Text(t)) for t in ["Numero", "Fecha", "Motivo", "Total"]], rows=[],
-    )
-    nota_credito_button = ft.ElevatedButton("Nota de credito")
-    corregir_venta_button = ft.ElevatedButton("Corregir venta")
-
-    # ---------- Panel de nota de credito (inline, sin AlertDialog) ----------
+    # ================= SECCION NOTA DE CREDITO / CORREGIR VENTA (pantalla aparte) =================
     # nc_estado["modo"]: 'nota_credito' (se eligen lineas y cantidades) | 'corregir' (todo lo que queda)
     nc_estado: dict = {"venta": None, "modo": "nota_credito", "lineas": [], "resto": Decimal("0")}
-    nc_titulo = ft.Text("", size=16, weight=ft.FontWeight.BOLD)
-    nc_ayuda = ft.Text("", size=12, color=COLOR_TEXT_SOFT)
+    nc_titulo = ft.Text("", size=15, weight=ft.FontWeight.BOLD)
+    nc_ayuda = ft.Text("", size=12.5, color=COLOR_TEXT_SOFT)
     nc_avisos_texto = ft.Text("", size=13, color=COLOR_WARNING, weight=ft.FontWeight.BOLD)
     nc_lineas_column = ft.Column([], spacing=6)
     nc_devolver_todo_button = ft.TextButton("Devolver todo")
@@ -1454,15 +1548,6 @@ def VentasView(page: ft.Page) -> ft.Control:
     nc_destino_dropdown = ft.Dropdown(label="El resto", width=420, options=[])
     nc_confirmar_texto = ft.Text("Emitir nota de credito")
     nc_confirmar_button = ft.ElevatedButton(content=nc_confirmar_texto)
-    nc_cancelar_button = ft.TextButton("Cancelar")
-    panel_nota_credito = ft.Container(
-        ft.Column([
-            nc_titulo, nc_ayuda, nc_avisos_texto, nc_lineas_column, nc_devolver_todo_button,
-            nc_motivo_field, nc_total_texto, nc_reintegro_cc_texto, nc_destino_dropdown,
-            ft.Row([nc_confirmar_button, nc_cancelar_button]),
-        ], spacing=8),
-        padding=14, border=ft.Border.all(1, COLOR_WARNING), border_radius=10, visible=False,
-    )
 
     def nc_items_elegidos() -> list[dict]:
         items = []
@@ -1536,11 +1621,12 @@ def VentasView(page: ft.Page) -> ft.Control:
 
     nc_devolver_todo_button.on_click = nc_devolver_todo
 
-    def mostrar_panel_nota_credito(modo: str) -> None:
-        venta = ventas_service.obtener_venta(detalle_venta_id["valor"])
+    def ir_a_nota_credito(venta_resumen: dict, modo: str) -> None:
+        detalle_venta_id["valor"] = venta_resumen["id"]
+        venta = ventas_service.obtener_venta(venta_resumen["id"])
         nc_estado.update({"venta": venta, "modo": modo, "lineas": []})
         es_correccion = modo == "corregir"
-        nc_titulo.value = "Corregir venta" if es_correccion else "Nueva nota de credito"
+        nc_titulo.value = f"Corregir la venta {venta['numero']}" if es_correccion else f"Nota de credito de la venta {venta['numero']}"
         nc_ayuda.value = (
             "Se acredita todo lo que queda de la venta (la mercaderia vuelve al stock) y se abre la caja "
             "en una pestaña nueva con el mismo carrito, para ajustarlo y cobrar de nuevo."
@@ -1582,16 +1668,8 @@ def VentasView(page: ft.Page) -> ft.Control:
                 cantidad_field, stock_checkbox,
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER))
         nc_lineas_column.controls = filas
-        panel_nota_credito.visible = True
+        mostrar_seccion(seccion_nota_credito)
         nc_recalcular()
-
-    def ocultar_panel_nota_credito(e: ft.ControlEvent | None = None) -> None:
-        panel_nota_credito.visible = False
-        page.update()
-
-    nota_credito_button.on_click = lambda e: mostrar_panel_nota_credito("nota_credito")
-    corregir_venta_button.on_click = lambda e: mostrar_panel_nota_credito("corregir")
-    nc_cancelar_button.on_click = ocultar_panel_nota_credito
 
     def confirmar_nota_credito(e: ft.ControlEvent) -> None:
         venta = nc_estado["venta"]
@@ -1602,17 +1680,25 @@ def VentasView(page: ft.Page) -> ft.Control:
                 venta["id"], items, nc_motivo_field.value or "", nc_destino_elegido(), es_correccion=es_correccion,
             )
         except EXCEPCIONES_NEGOCIO as ex:
-            mostrar_mensaje(str(ex), aviso=True)
+            avisar(page, str(ex), error=True)
             return
-        panel_nota_credito.visible = False
         if es_correccion:
             cargar_venta_en_caja(venta, items)
-            mostrar_mensaje(f"Se emitio la {nota['numero']}. Ajusta el carrito y cobra de nuevo.")
+            avisar(page, f"Se emitio la {nota['numero']}. Ajusta el carrito y cobra de nuevo.")
             return
-        refrescar_detalle()
-        mostrar_mensaje(f"Se emitio la nota de credito {nota['numero']} por {money(nota['total'])}")
+        mostrar_historial()
+        avisar(page, f"Se emitio la nota de credito {nota['numero']} por {money(nota['total'])}")
 
     nc_confirmar_button.on_click = confirmar_nota_credito
+
+    seccion_nota_credito = ft.Column([
+        tarjeta(
+            nc_avisos_texto, nc_lineas_column, nc_devolver_todo_button,
+            nc_motivo_field, nc_total_texto, nc_reintegro_cc_texto, nc_destino_dropdown,
+            ft.Row([nc_confirmar_button, ft.TextButton("Cancelar", on_click=lambda e: mostrar_historial())]),
+            titulo=nc_titulo, subtitulo=nc_ayuda,
+        ),
+    ], visible=False, expand=True, scroll=ft.ScrollMode.AUTO)
 
     def abrir_carrito_en_pestana_nueva(
         cliente_id: int | None, cliente_nombre_nuevo: str | None, es_generico: bool, lista_precio_id: int | None,
@@ -1658,7 +1744,7 @@ def VentasView(page: ft.Page) -> ft.Control:
         """'Corregir venta': mismo cliente, ajustes y lineas (las cantidades recien acreditadas)."""
         cantidades = {i["venta_item_id"]: i["cantidad"] for i in items_acreditados}
         abrir_carrito_en_pestana_nueva(
-            venta["cliente_id"], None, venta["cliente_nombre"] == clientes_service.NOMBRE_CLIENTE_GENERICO,
+            venta["cliente_id"], None, (venta["cliente_nombre"] or "").upper() == clientes_service.NOMBRE_CLIENTE_GENERICO,
             venta["lista_precio_id"],
             venta["descuento_total_porcentaje"], venta["observacion"],
             [{**item, "cantidad": cantidades.get(item["id"], Decimal("0"))} for item in venta["items"]],
@@ -1666,106 +1752,17 @@ def VentasView(page: ft.Page) -> ft.Control:
         mostrar_caja()
         renderizar_ticket_activo()
 
-    def refrescar_detalle() -> None:
-        venta = ventas_service.obtener_venta(detalle_venta_id["valor"])
-
-        def subtotal_linea(i: dict) -> Decimal:
-            monto = i["cantidad"] * i["precio_unitario"]
-            if i["descuento_item_porcentaje"] is not None:
-                monto = monto * (Decimal("1") - i["descuento_item_porcentaje"] / Decimal("100"))
-            return monto.quantize(Decimal("1.00"))
-
-        detalle_titulo.value = f"{venta['numero']} - {venta['cliente_nombre']}"
-        detalle_info.value = (
-            f"Fecha: {venta['fecha'][:16]}   |   Estado: {venta['estado'].capitalize()}   |   "
-            f"IVA: {texto_iva(int(venta['iva_porcentaje'] * 100), venta['precios_con_iva']) if venta['iva_porcentaje'] else 'Sin IVA'}"
-        )
-        if venta["observacion"]:
-            detalle_info.value += f"\nObservacion: {venta['observacion']}"
-        tabla_detalle_items.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(i["descripcion_libre"] or f"{i['producto_codigo']} - {i['producto_nombre']}")),
-                ft.DataCell(ft.Text(formatear_cantidad(i["cantidad"]))),
-                ft.DataCell(ft.Text(formatear_cantidad(i["cantidad_devuelta"]) if i["cantidad_devuelta"] > 0 else "-",
-                                    color=COLOR_WARNING if i["cantidad_devuelta"] > 0 else None)),
-                ft.DataCell(ft.Text(formatear_precio(i["precio_unitario"]))),
-                ft.DataCell(ft.Text(f"{formatear_porcentaje(i['descuento_item_porcentaje'])}%" if i["descuento_item_porcentaje"] is not None else "-")),
-                ft.DataCell(ft.Text(formatear_precio(subtotal_linea(i)))),
-            ])
-            for i in venta["items"]
-        ]
-        tabla_detalle_pagos.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(p["medio_pago_nombre"] + (" (cta. cte.)" if p["es_cuenta_corriente"] else ""))),
-                ft.DataCell(ft.Text(formatear_precio(p["monto"]))),
-                ft.DataCell(ft.Text(formatear_precio(p["recibido"]) if p["recibido"] is not None else "-")),
-                ft.DataCell(ft.Text(formatear_precio(p["vuelto"]) if p["vuelto"] is not None else "-")),
-            ])
-            for p in venta["pagos"]
-        ]
-        detalle_total_texto.value = (
-            f"Total: {formatear_precio(venta['total'])}   (neto {formatear_precio(venta['neto'])} + IVA {formatear_precio(venta['iva'])})"
-        )
-        hay_notas = bool(venta["notas_credito"])
-        detalle_neto_texto.visible = hay_notas
-        detalle_neto_texto.value = (
-            f"Acreditado: {formatear_precio(venta['total_acreditado'])}   ·   Neto: {formatear_precio(venta['total_neto'])}"
-        )
-        ganancia = ventas_service.detalle_ganancia_venta(venta)
-        detalle_ganancia_texto.value = (
-            f"Ganancia: {formatear_precio(ganancia['ganancia'])}   "
-            f"(cobrado sin IVA {formatear_precio(ganancia['ingresos'])} - costo {formatear_precio(ganancia['costo'])})"
-        )
-        detalle_ganancia_texto.color = COLOR_SUCCESS if ganancia["ganancia"] >= 0 else COLOR_DANGER
-        titulo_notas_credito.visible = hay_notas
-        tabla_notas_credito.visible = hay_notas
-        tabla_notas_credito.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(nc["numero"] + (" (correccion)" if nc["es_correccion"] else ""))),
-                ft.DataCell(ft.Text(nc["fecha"][:16])),
-                ft.DataCell(ft.Text(nc["motivo"])),
-                ft.DataCell(ft.Text(formatear_precio(nc["total"]))),
-            ])
-            for nc in venta["notas_credito"]
-        ]
-        nota_credito_button.visible = venta["queda_por_acreditar"]
-        corregir_venta_button.visible = venta["queda_por_acreditar"]
-        page.update()
-
-    seccion_detalle = ft.Column(
-        [
-            detalle_titulo, detalle_info,
-            ft.Row([
-                ft.ElevatedButton("Volver al listado", on_click=lambda e: mostrar_historial()),
-                nota_credito_button, corregir_venta_button,
-            ]),
-            panel_nota_credito,
-            ft.Text("Items", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_items),
-            ft.Text("Pagos", weight=ft.FontWeight.BOLD), con_scroll_horizontal(tabla_detalle_pagos),
-            detalle_total_texto, detalle_neto_texto, detalle_ganancia_texto,
-            titulo_notas_credito, con_scroll_horizontal(tabla_notas_credito),
-        ],
-        visible=False, expand=True, scroll=ft.ScrollMode.AUTO, spacing=8,
-    )
-
     # ================= SECCION PRE-VENTAS (carritos guardados para despues) =================
     preventas_boton_texto = ft.Text("Pre-ventas", weight=ft.FontWeight.BOLD)
-    tabla_preventas = ft.DataTable(
-        columns=[ft.DataColumn(ft.Text(t)) for t in ["Nombre", "Cliente", "Productos", "Total aprox.", "Guardada", ""]],
-        rows=[],
-    )
-    sin_preventas_texto = ft.Text("No hay pre-ventas guardadas hoy. Desde la caja: 'Guardar para despues (F7)'.",
-                                  color=COLOR_TEXT_SOFT)
-    descarte_estado: dict = {"preventa": None}
-    descarte_titulo = ft.Text("", weight=ft.FontWeight.BOLD, color=COLOR_DANGER)
-    descarte_motivo_field = ft.TextField(label="Motivo (opcional)", expand=True, dense=True)
-    descarte_franja = ft.Container(
-        visible=False, padding=12, border=ft.Border.all(1, COLOR_DANGER), border_radius=8,
-        content=ft.Row([
-            descarte_titulo, descarte_motivo_field,
-            ft.ElevatedButton("Descartar", on_click=lambda e: confirmar_descarte()),
-            ft.TextButton("Cancelar", on_click=lambda e: ocultar_descarte()),
-        ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    lista_preventas = Lista(
+        [
+            Columna("Nombre", peso=2, orden="nombre"), Columna("Cliente", peso=2, orden="cliente_nombre"),
+            Columna("Productos", ancho=100, derecha=True), Columna("Total aprox. ($)", ancho=140, derecha=True),
+            Columna("Guardada", ancho=100, orden="fecha_creacion"), Columna("Estado", ancho=190),
+            Columna("Acciones", ancho=90, derecha=True),
+        ],
+        al_cambiar_pagina=lambda: refrescar_lista_preventas(), nombre="pre-ventas", orden_inicial=("fecha_creacion", False),
+        sin_datos="No hay pre-ventas guardadas hoy. Desde la caja: 'Guardar para despues (F7)'.",
     )
 
     def refrescar_contador_preventas() -> None:
@@ -1775,28 +1772,33 @@ def VentasView(page: ft.Page) -> ft.Control:
     def pestana_de_preventa(preventa_id: int) -> int | None:
         return next((i for i, t in enumerate(tickets) if t["borrador_id"] == preventa_id), None)
 
+    def celdas_preventa(pv: dict) -> list:
+        abierta = pestana_de_preventa(pv["id"]) is not None
+        return [
+            ft.Text(pv["nombre"], weight=ft.FontWeight.BOLD), pv["cliente_nombre"], str(len(pv["items"])),
+            money(pv["total_aproximado"]), preventas_service.hora(pv["fecha_creacion"]),
+            etiqueta_estado("Abierta en una pestaña", TONO_CURSO) if abierta else etiqueta_estado("Guardada", TONO_ESPERA),
+            ft.Row([
+                accion_abrir(ft.Icons.SHOPPING_CART_CHECKOUT, "Retomar en la caja", lambda pv=pv: retomar_preventa(pv["id"])),
+                accion_anular(
+                    "Descartar pre-venta", f"Descartar '{pv['nombre']}'",
+                    "Se descarta el carrito guardado (no habia tocado el stock). Queda anotado con el motivo.",
+                    lambda motivo, pv=pv: descartar_preventa(pv, motivo),
+                    por_que_no="esta abierta en una pestaña: cerrala antes" if abierta else None,
+                ),
+            ], spacing=0, tight=True),
+        ]
+
     def refrescar_lista_preventas() -> None:
         preventas = preventas_service.listar_preventas_del_dia()
-        tabla_preventas.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(pv["nombre"], weight=ft.FontWeight.BOLD)),
-                ft.DataCell(ft.Text(pv["cliente_nombre"])),
-                ft.DataCell(ft.Text(str(len(pv["items"])))),
-                ft.DataCell(ft.Text(money(pv["total_aproximado"]))),
-                ft.DataCell(ft.Text(preventas_service.hora(pv["fecha_creacion"]) + (
-                    "  (abierta en una pestaña)" if pestana_de_preventa(pv["id"]) is not None else ""))),
-                ft.DataCell(ft.Row([
-                    ft.ElevatedButton("Retomar", icon=ft.Icons.SHOPPING_CART_CHECKOUT,
-                                      on_click=lambda e, i=pv["id"]: retomar_preventa(i)),
-                    ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip="Descartar", icon_color=COLOR_DANGER,
-                                  on_click=lambda e, x=pv: mostrar_descarte(x)),
-                ], spacing=4, tight=True)),
-            ])
-            for pv in preventas
-        ]
-        tabla_preventas.visible = bool(preventas)
-        sin_preventas_texto.visible = not preventas
+        lista_preventas.mostrar(preventas, celdas_preventa, valor_orden=lambda pv, k: pv[k])
         preventas_boton_texto.value = f"Pre-ventas ({len(preventas)})" if preventas else "Pre-ventas"
+        page.update()
+
+    def descartar_preventa(pv: dict, motivo: str) -> str:
+        preventas_service.descartar_preventa(pv["id"], motivo)
+        refrescar_lista_preventas()
+        return f"Pre-venta '{pv['nombre']}' descartada"
 
     def retomar_preventa(preventa_id: int) -> None:
         idx = pestana_de_preventa(preventa_id)
@@ -1809,7 +1811,6 @@ def VentasView(page: ft.Page) -> ft.Control:
         if pv is None or pv["estado"] != "abierta":
             mostrar_mensaje("Esa pre-venta ya no esta disponible", aviso=True)
             refrescar_lista_preventas()
-            page.update()
             return
         t = abrir_carrito_en_pestana_nueva(
             pv["cliente_id"], pv["cliente_nombre_nuevo"], pv["usar_cliente_generico"], pv["lista_precio_id"],
@@ -1823,48 +1824,14 @@ def VentasView(page: ft.Page) -> ft.Control:
         else:
             mostrar_mensaje(f"Pre-venta '{pv['nombre']}' retomada")
 
-    def mostrar_descarte(pv: dict) -> None:
-        if pestana_de_preventa(pv["id"]) is not None:
-            mostrar_mensaje(f"'{pv['nombre']}' esta abierta en una pestaña: cerrala antes de descartarla", aviso=True)
-            return
-        descarte_estado["preventa"] = pv
-        descarte_titulo.value = f"Descartar '{pv['nombre']}'"
-        descarte_motivo_field.value = ""
-        descarte_franja.visible = True
-        page.update()
-
-    def ocultar_descarte() -> None:
-        descarte_estado["preventa"] = None
-        descarte_franja.visible = False
-        page.update()
-
-    def confirmar_descarte() -> None:
-        pv = descarte_estado["preventa"]
-        if pv is None:
-            return
-        try:
-            preventas_service.descartar_preventa(pv["id"], descarte_motivo_field.value)
-        except EXCEPCIONES_NEGOCIO as ex:
-            mostrar_mensaje(str(ex), aviso=True)
-            return
-        descarte_estado["preventa"] = None
-        descarte_franja.visible = False
-        refrescar_lista_preventas()
-        mostrar_mensaje(f"Pre-venta '{pv['nombre']}' descartada")
-        page.update()
-
     seccion_preventas = ft.Column(
         [
-            ft.Row([ft.Text("Pre-ventas de hoy", size=20, weight=ft.FontWeight.BOLD),
-                    ft.Container(expand=True), ft.TextButton("Volver a la caja", on_click=lambda e: mostrar_caja())]),
-            ft.Text("Carritos guardados para retomar mas tarde. No descuentan stock. "
-                    "Las de dias anteriores ya no aparecen y se borran solas a la semana.",
-                    size=12.5, color=COLOR_TEXT_SOFT),
-            descarte_franja,
-            con_scroll_horizontal(tabla_preventas),
-            sin_preventas_texto,
+            encabezado_pantalla("Pre-ventas de hoy", "Carritos guardados para retomar mas tarde. No descuentan stock. "
+                                                     "Las de dias anteriores ya no aparecen y se borran solas a la semana."),
+            barra([], [boton_secundario("Volver a la caja", ft.Icons.ARROW_BACK, lambda: mostrar_caja())]),
+            lista_preventas.control,
         ],
-        visible=False, expand=True, scroll=ft.ScrollMode.AUTO, spacing=12,
+        visible=False, expand=True, scroll=ft.ScrollMode.AUTO, spacing=ESPACIO_PANTALLA,
     )
 
     # ================= SECCION CAJA (pantalla por defecto) =================
@@ -1910,40 +1877,22 @@ def VentasView(page: ft.Page) -> ft.Control:
     )
 
     # ================= NAVEGACION ENTRE SECCIONES =================
-    def mostrar_caja() -> None:
-        seccion_caja.visible = True
-        seccion_historial.visible = False
-        seccion_detalle.visible = False
-        seccion_preventas.visible = False
-        refrescar_contador_preventas()
+    def mostrar_seccion(seccion: ft.Control) -> None:
+        for sec in (seccion_caja, seccion_preventas, seccion_historial, seccion_nota_credito):
+            sec.visible = sec is seccion
         page.update()
+
+    def mostrar_caja() -> None:
+        refrescar_contador_preventas()
+        mostrar_seccion(seccion_caja)
 
     def mostrar_preventas() -> None:
-        seccion_caja.visible = False
-        seccion_historial.visible = False
-        seccion_detalle.visible = False
-        seccion_preventas.visible = True
-        descarte_franja.visible = False
+        mostrar_seccion(seccion_preventas)
         refrescar_lista_preventas()
-        page.update()
 
     def mostrar_historial() -> None:
-        seccion_caja.visible = False
-        seccion_preventas.visible = False
-        seccion_historial.visible = True
-        seccion_detalle.visible = False
+        mostrar_seccion(seccion_historial)
         refrescar_lista_historial()
-        page.update()
-
-    def ir_a_detalle_historial(venta_id: int) -> None:
-        detalle_venta_id["valor"] = venta_id
-        panel_nota_credito.visible = False
-        seccion_preventas.visible = False
-        seccion_caja.visible = False
-        seccion_historial.visible = False
-        seccion_detalle.visible = True
-        refrescar_detalle()
-        page.update()
 
     # ================= ATAJOS DE TECLADO GLOBALES =================
     # page.on_keyboard_event es global a la Page compartida por toda la app -- app_shell.py lo
@@ -2041,4 +1990,4 @@ def VentasView(page: ft.Page) -> ft.Control:
         page.presupuesto_a_abrir = None
         abrir_presupuesto(presupuesto_pedido)
 
-    return ft.Column([seccion_caja, seccion_preventas, seccion_historial, seccion_detalle], expand=True)
+    return ft.Column([seccion_caja, seccion_preventas, seccion_historial, seccion_nota_credito], expand=True)
